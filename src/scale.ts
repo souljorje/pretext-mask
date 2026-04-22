@@ -12,6 +12,7 @@ export function createRenderConfig(viewBox: string, config: AvatarConfig): Avata
     glyphSpacing: config.glyphSpacing * unitsPerPixel,
     letterSpacing: config.letterSpacing * unitsPerPixel,
     lineHeight: config.lineHeight * unitsPerPixel,
+    padding: config.padding * unitsPerPixel,
     hoverRadius: config.hoverRadius * unitsPerPixel,
   }
 }

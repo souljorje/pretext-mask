@@ -2,11 +2,11 @@ import './styles.css'
 import type { AvatarConfig, GlyphInstance, ParsedSvg } from './types'
 import { extractPathsFromSvgText } from './svgExtract'
 import { glitchGlyphs, layoutDenseGlyphField } from './glyphLayout'
-import { buildStaticSvg, makeFallbackSvg } from './svgSampler'
+import { makeFallbackSvg } from './svgSampler'
 import { createRenderConfig } from './scale'
+import { parseViewBox } from './scale'
 import { filterGlyphsByShape, filterGlyphsNearOutline } from './shapeHitTest'
 
-const SVG_NS = 'http://www.w3.org/2000/svg'
 type AspectPreset = 'custom' | '1:1' | '4:3' | '3:4' | '16:9' | '9:16'
 
 const config: AvatarConfig = {
@@ -20,10 +20,11 @@ const config: AvatarConfig = {
   glyphSpacing: 0,
   letterSpacing: 0,
   lineHeight: 24,
+  padding: 0,
   glitchRate: 8,
   hoverRadius: 86,
   baseColor: '#111111',
-  accentColor: '#6f6f6f',
+  accentColor: '#16a34a',
 }
 
 let svgText = makeFallbackSvg()
@@ -64,26 +65,27 @@ app.innerHTML = `
         ${numberInput('fontWeight', 'Weight', config.fontWeight, 100, 900, 100)}
         ${numberInput('glyphSpacing', 'Letter spacing', config.glyphSpacing, -40, 80, 0.5)}
         ${numberInput('lineHeight', 'Line height', config.lineHeight, 4, 120, 1)}
+        ${numberInput('padding', 'Padding', config.padding, -120, 240, 1)}
         ${sliderInput('glitchRate', 'Glitch rate', config.glitchRate, 0, 12, 1)}
         ${numberInput('hoverRadius', 'Hover radius', config.hoverRadius, 10, 240, 1)}
         ${colorInput('baseColor', 'Base', config.baseColor)}
         ${colorInput('accentColor', 'Accent', config.accentColor)}
       </div>
 
-      <button id="export-svg" class="primary-action" type="button">Export SVG</button>
+      <button id="export-png" class="primary-action" type="button">Export PNG</button>
       <div id="status" class="status" role="status"></div>
     </section>
 
     <section class="preview-wrap" aria-label="Avatar preview">
-      <svg id="preview" class="preview" role="img" aria-label="Generated avatar"></svg>
+      <canvas id="preview" class="preview" role="img" aria-label="Generated avatar"></canvas>
     </section>
   </main>
 `
 
-const preview = document.querySelector<SVGSVGElement>('#preview')
+const preview = document.querySelector<HTMLCanvasElement>('#preview')
 const status = document.querySelector<HTMLDivElement>('#status')
 if (!preview || !status) throw new Error('Missing UI nodes.')
-const previewSvg = preview
+const previewCanvas = preview
 const statusNode = status
 
 bindControls()
@@ -142,21 +144,23 @@ function bindControls() {
     }
   })
 
-  document.querySelector<HTMLButtonElement>('#export-svg')?.addEventListener('click', () => {
-    const staticSvg = buildStaticSvg(parsed, displayGlyphs, createRenderConfig(parsed.viewBox, config))
-    const url = URL.createObjectURL(new Blob([staticSvg], { type: 'image/svg+xml' }))
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `pretext-avatar-${config.seed || 'seed'}.svg`
-    link.click()
-    URL.revokeObjectURL(url)
+  document.querySelector<HTMLButtonElement>('#export-png')?.addEventListener('click', () => {
+    previewCanvas.toBlob(blob => {
+      if (!blob) return
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `pretext-avatar-${config.seed || 'seed'}.png`
+      link.click()
+      URL.revokeObjectURL(url)
+    }, 'image/png')
   })
 
-  previewSvg.addEventListener('pointermove', event => {
-    const point = clientPointToSvg(event.clientX, event.clientY)
+  previewCanvas.addEventListener('pointermove', event => {
+    const point = clientPointToCanvasViewBox(event.clientX, event.clientY)
     pointer = point
   })
-  previewSvg.addEventListener('pointerleave', () => {
+  previewCanvas.addEventListener('pointerleave', () => {
     pointer = null
   })
 }
@@ -172,6 +176,7 @@ function relayout(force = false) {
     glyphSpacing: config.glyphSpacing,
     letterSpacing: config.letterSpacing,
     lineHeight: config.lineHeight,
+    padding: config.padding,
     width: config.width,
     height: config.height,
   })
@@ -184,7 +189,12 @@ function relayout(force = false) {
     const outlineWidth = Math.max(renderConfig.fontSize * 1.45, renderConfig.lineHeight * 0.72)
     baseGlyphs = filterGlyphsNearOutline(parsed, layoutDenseGlyphField(parsed.viewBox, renderConfig), outlineWidth)
   } else {
-    baseGlyphs = filterGlyphsByShape(parsed, layoutDenseGlyphField(parsed.viewBox, renderConfig), config.renderMode)
+    baseGlyphs = filterGlyphsByShape(
+      parsed,
+      layoutDenseGlyphField(parsed.viewBox, renderConfig),
+      config.renderMode,
+      renderConfig.fontSize * 0.75,
+    )
   }
   displayGlyphs = baseGlyphs
   draw(displayGlyphs)
@@ -199,37 +209,34 @@ function animate(timeMs: number) {
 }
 
 function draw(glyphs: readonly GlyphInstance[]) {
-  previewSvg.replaceChildren()
-  previewSvg.setAttribute('viewBox', parsed.viewBox)
-  previewSvg.setAttribute('width', String(config.width))
-  previewSvg.setAttribute('height', String(config.height))
-  previewSvg.style.maxWidth = `${config.width}px`
-  previewSvg.style.aspectRatio = `${config.width} / ${config.height}`
+  const pixelRatio = window.devicePixelRatio || 1
+  const width = Math.max(1, config.width)
+  const height = Math.max(1, config.height)
+  previewCanvas.width = Math.round(width * pixelRatio)
+  previewCanvas.height = Math.round(height * pixelRatio)
+  previewCanvas.style.maxWidth = `${width}px`
+  previewCanvas.style.aspectRatio = `${width} / ${height}`
 
-  const background = document.createElementNS(SVG_NS, 'rect')
-  background.setAttribute('width', '100%')
-  background.setAttribute('height', '100%')
-  background.setAttribute('fill', '#ffffff')
-  previewSvg.append(background)
+  const context = previewCanvas.getContext('2d')
+  if (!context) return
 
-  const group = document.createElementNS(SVG_NS, 'g')
+  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
+  context.clearRect(0, 0, width, height)
+  context.fillStyle = '#ffffff'
+  context.fillRect(0, 0, width, height)
+
   const renderConfig = createRenderConfig(parsed.viewBox, config)
-  group.setAttribute('font-family', renderConfig.fontFamily)
-  group.setAttribute('font-size', String(renderConfig.fontSize))
-  group.setAttribute('font-weight', String(renderConfig.fontWeight))
-  group.setAttribute('text-anchor', 'middle')
-  group.setAttribute('dominant-baseline', 'middle')
-  previewSvg.append(group)
+  const transform = createViewBoxTransform(parsed.viewBox, width, height)
+  context.font = `${renderConfig.fontWeight} ${transform.scaleY(renderConfig.fontSize)}px ${renderConfig.fontFamily}`
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
 
   for (const glyph of glyphs) {
-    const text = document.createElementNS(SVG_NS, 'text')
-    text.textContent = glyph.char
-    text.setAttribute('x', String(glyph.x))
-    text.setAttribute('y', String(glyph.y))
-    text.setAttribute('fill', glyph.color)
-    text.setAttribute('opacity', String(glyph.opacity))
-    group.append(text)
+    context.globalAlpha = glyph.opacity
+    context.fillStyle = glyph.color
+    context.fillText(glyph.char, transform.x(glyph.x), transform.y(glyph.y))
   }
+  context.globalAlpha = 1
 }
 
 function applyPointerColors(glyphs: readonly GlyphInstance[]): GlyphInstance[] {
@@ -244,14 +251,30 @@ function applyPointerColors(glyphs: readonly GlyphInstance[]): GlyphInstance[] {
   })
 }
 
-function clientPointToSvg(clientX: number, clientY: number): { x: number; y: number } {
-  const point = previewSvg.createSVGPoint()
-  point.x = clientX
-  point.y = clientY
-  const matrix = previewSvg.getScreenCTM()
-  if (!matrix) return { x: 0, y: 0 }
-  const transformed = point.matrixTransform(matrix.inverse())
-  return { x: transformed.x, y: transformed.y }
+function clientPointToCanvasViewBox(clientX: number, clientY: number): { x: number; y: number } {
+  const rect = previewCanvas.getBoundingClientRect()
+  const box = parseViewBox(parsed.viewBox)
+  const xRatio = (clientX - rect.left) / rect.width
+  const yRatio = (clientY - rect.top) / rect.height
+  return {
+    x: box.x + xRatio * box.width,
+    y: box.y + yRatio * box.height,
+  }
+}
+
+function createViewBoxTransform(viewBox: string, width: number, height: number) {
+  const box = parseViewBox(viewBox)
+  return {
+    x(value: number) {
+      return ((value - box.x) / box.width) * width
+    },
+    y(value: number) {
+      return ((value - box.y) / box.height) * height
+    },
+    scaleY(value: number) {
+      return (value / box.height) * height
+    },
+  }
 }
 
 function mixHex(a: string, b: string, amount: number): string {

@@ -21,6 +21,7 @@ describe('glyph chunking', () => {
       glyphSpacing: 12,
       letterSpacing: 0,
       lineHeight: 16,
+      padding: 0,
       glitchRate: 0,
       hoverRadius: 40,
       baseColor: '#111111',
@@ -44,6 +45,7 @@ describe('glyph chunking', () => {
       glyphSpacing: 12,
       letterSpacing: 0,
       lineHeight: 16,
+      padding: 0,
       glitchRate: 8,
       hoverRadius: 40,
       baseColor: '#111111',
@@ -80,6 +82,7 @@ describe('glyph chunking', () => {
       glyphSpacing: 0,
       letterSpacing: 0,
       lineHeight: 24,
+      padding: 0,
       glitchRate: 0,
       hoverRadius: 40,
       baseColor: '#111111',
@@ -102,6 +105,7 @@ describe('glyph chunking', () => {
       glyphSpacing: 0,
       letterSpacing: 0,
       lineHeight: 24,
+      padding: 0,
       glitchRate: 0,
       hoverRadius: 40,
       baseColor: '#111111',
@@ -113,5 +117,29 @@ describe('glyph chunking', () => {
     for (let i = 1; i < row.length; i++) {
       expect(row[i].x).toBeGreaterThan(row[i - 1].x)
     }
+  })
+
+  it('moves rows inward when padding increases', () => {
+    const config: AvatarConfig = {
+      seed: 'padding',
+      renderMode: 'inside',
+      width: 100,
+      height: 100,
+      fontFamily: 'Georgia',
+      fontSize: 20,
+      fontWeight: 700,
+      glyphSpacing: 0,
+      letterSpacing: 0,
+      lineHeight: 24,
+      padding: 0,
+      glitchRate: 0,
+      hoverRadius: 40,
+      baseColor: '#111111',
+      accentColor: '#777777',
+    }
+    const noPadding = layoutDenseGlyphFieldFromLines('0 0 240 120', config, ['mmmmmmmmmmmm'], 'mmmmmmmmmmmm')
+    const padded = layoutDenseGlyphFieldFromLines('0 0 240 120', { ...config, padding: 20 }, ['mmmmmmmmmmmm'], 'mmmmmmmmmmmm')
+
+    expect(padded[0].y).toBeGreaterThan(noPadding[0].y)
   })
 })

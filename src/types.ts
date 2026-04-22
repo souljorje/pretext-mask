@@ -11,6 +11,7 @@ export type AvatarConfig = {
   glyphSpacing: number
   letterSpacing: number
   lineHeight: number
+  padding: number
   glitchRate: number
   hoverRadius: number
   baseColor: string

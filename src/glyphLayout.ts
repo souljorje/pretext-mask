@@ -82,7 +82,8 @@ export function layoutGlyphsOnSamplers(
 export function layoutDenseGlyphField(parsedViewBox: string, config: AvatarConfig): GlyphInstance[] {
   const box = parseViewBox(parsedViewBox)
   const lineHeight = Math.max(config.lineHeight, config.fontSize)
-  const rowCount = Math.ceil(box.height / lineHeight) + 3
+  const rowBounds = getRowBounds(box, config, lineHeight)
+  const rowCount = rowBounds.count
   const glyphStep = getGlyphStep(config)
   const charsPerRow = Math.ceil(box.width / glyphStep) + 8
   const stream = makeGlyphStream(`${config.seed}:field`, SYMBOL_ALPHABET, rowCount * charsPerRow * 2)
@@ -102,7 +103,8 @@ export function layoutDenseGlyphFieldFromLines(
 ): GlyphInstance[] {
   const box = parseViewBox(parsedViewBox)
   const lineHeight = Math.max(config.lineHeight, config.fontSize)
-  const rowCount = Math.ceil(box.height / lineHeight) + 3
+  const rowBounds = getRowBounds(box, config, lineHeight)
+  const rowCount = rowBounds.count
   const glyphStep = getGlyphStep(config)
   const charsPerRow = Math.ceil(box.width / glyphStep) + 8
   const random = createSeededRandom(`${config.seed}:field-offsets`)
@@ -113,14 +115,16 @@ export function layoutDenseGlyphFieldFromLines(
     const line = lines[row % Math.max(1, lines.length)]
     const chars = splitGlyphs(line ?? fallbackText).filter(char => char.trim().length > 0)
     const xOffset = (random.next() - 0.5) * glyphStep * 0.35
-    const y = box.y + row * lineHeight + config.fontSize
+    const y = rowBounds.count === 1 ? rowBounds.top : rowBounds.top + row * rowBounds.step
     let x = box.x + xOffset
     let previousWidth = 0
 
     for (let column = 0; column < charsPerRow; column++) {
       const char = chars[column % Math.max(1, chars.length)] ?? '*'
       const width = widthMap.get(char) ?? glyphStep
+      const safetyPad = config.glyphSpacing >= 0 ? config.fontSize * 0.01 : 0
       x += column === 0 ? width / 2 : previousWidth / 2 + width / 2 + config.glyphSpacing
+      x += column === 0 ? 0 : safetyPad
       if (x > box.x + box.width + glyphStep * 4) break
 
       glyphs.push({
@@ -182,7 +186,7 @@ export function fontShorthand(config: AvatarConfig): string {
 
 export function getGlyphStep(config: AvatarConfig): number {
   const naturalAdvance = measureAverageGlyphAdvance(config)
-  const minimumAdvance = Math.max(0.1, config.fontSize * 0.18)
+  const minimumAdvance = Math.max(0.1, config.fontSize * 0.01)
   return Math.max(minimumAdvance, naturalAdvance + config.glyphSpacing)
 }
 
@@ -200,7 +204,41 @@ export function measureGlyphWidthMap(config: AvatarConfig): Map<string, number> 
   }
 
   context.font = fontShorthand(config)
-  return new Map(glyphs.map(glyph => [glyph, context.measureText(glyph).width]))
+  return new Map(
+    glyphs.map(glyph => {
+      const metrics = context.measureText(glyph)
+      const boundingWidth =
+        metrics.actualBoundingBoxLeft && metrics.actualBoundingBoxRight
+          ? metrics.actualBoundingBoxLeft + metrics.actualBoundingBoxRight
+          : 0
+      return [glyph, Math.max(metrics.width, boundingWidth, config.fontSize * 0.82)]
+    }),
+  )
+}
+
+export function measureVerticalMetrics(config: AvatarConfig): { ascent: number; descent: number } {
+  const context = getMeasureContext()
+  if (!context) return { ascent: config.fontSize * 0.8, descent: config.fontSize * 0.2 }
+
+  context.font = fontShorthand(config)
+  const metrics = context.measureText(SYMBOL_ALPHABET)
+  return {
+    ascent: metrics.actualBoundingBoxAscent || config.fontSize * 0.8,
+    descent: metrics.actualBoundingBoxDescent || config.fontSize * 0.2,
+  }
+}
+
+function getRowBounds(
+  box: { y: number; height: number },
+  config: AvatarConfig,
+  lineHeight: number,
+): { top: number; step: number; count: number } {
+  const top = box.y + config.padding
+  const bottom = box.y + box.height - config.padding
+  const span = Math.max(0, bottom - top)
+  const count = Math.max(1, Math.floor(span / lineHeight) + 1)
+  const step = count > 1 ? span / (count - 1) : lineHeight
+  return { top, step, count }
 }
 
 function getMeasureContext(): CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null {

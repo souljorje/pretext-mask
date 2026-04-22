@@ -6,6 +6,7 @@ export function filterGlyphsByShape<T extends { x: number; y: number }>(
   parsed: ParsedSvg,
   glyphs: readonly T[],
   mode: RenderMode,
+  sampleRadius = 0,
 ): T[] {
   if (mode === 'outline') return [...glyphs]
 
@@ -30,13 +31,31 @@ export function filterGlyphsByShape<T extends { x: number; y: number }>(
   })
 
   const filtered = glyphs.filter(glyph => {
-    const point = new DOMPoint(glyph.x, glyph.y)
-    const isInside = pathElements.some(path => path.isPointInFill(point))
-    return mode === 'inside' ? isInside : !isInside
+    const overlapsShape = getSamplePoints(glyph.x, glyph.y, sampleRadius).some(point =>
+      pathElements.some(path => path.isPointInFill(point)),
+    )
+    return mode === 'inside' ? overlapsShape : !overlapsShape
   })
 
   requestAnimationFrame(() => svg.remove())
   return filtered
+}
+
+function getSamplePoints(x: number, y: number, radius: number): DOMPoint[] {
+  if (radius <= 0) return [new DOMPoint(x, y)]
+
+  const half = radius / 2
+  return [
+    new DOMPoint(x, y),
+    new DOMPoint(x - radius, y),
+    new DOMPoint(x + radius, y),
+    new DOMPoint(x, y - half),
+    new DOMPoint(x, y + half),
+    new DOMPoint(x - radius, y - half),
+    new DOMPoint(x + radius, y - half),
+    new DOMPoint(x - radius, y + half),
+    new DOMPoint(x + radius, y + half),
+  ]
 }
 
 export function filterGlyphsNearOutline<T extends { x: number; y: number }>(
