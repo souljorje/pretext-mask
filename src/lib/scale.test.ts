@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createRenderConfig, fitViewBoxToFrame } from './scale'
-import type { MaskConfig } from './types'
+import type { MaskLayoutConfig } from './types'
 
 describe('viewBox scaling', () => {
   it('fits a square viewBox into a wide frame without stretching', () => {
@@ -33,7 +33,7 @@ describe('viewBox scaling', () => {
   })
 
   it('keeps pixel-facing controls stable after fitted scaling', () => {
-    const config: MaskConfig = {
+    const config: MaskLayoutConfig = {
       seed: 'scale',
       renderMode: 'outline',
       width: 800,
@@ -44,10 +44,6 @@ describe('viewBox scaling', () => {
       glyphSpacing: 2,
       lineHeight: 16,
       padding: 0,
-      glitchRate: 0,
-      hoverRadius: 40,
-      baseColor: '#111111',
-      accentColor: '#777777',
     }
     const renderConfig = createRenderConfig('0 0 50 50', config)
     const fit = fitViewBoxToFrame('0 0 50 50', config.width, config.height, config.padding)

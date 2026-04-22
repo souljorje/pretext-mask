@@ -1,23 +1,29 @@
-import type { MaskDrawDecision, MaskEffect, MaskGlyphDecision, MaskRenderPlan, TextRun, TextRunGlyph } from './types'
+import type { MaskRenderPlan, TextRun, TextRunGlyph } from '../lib'
+import type { MaskDrawDecision, MaskGlyphDecision, MaskRenderPlugin } from './types'
 
 type CanvasLetterSpacingContext = CanvasRenderingContext2D & {
   letterSpacing?: string
 }
 
-export function drawMaskRenderPlan(
-  ctx: CanvasRenderingContext2D,
-  plan: MaskRenderPlan,
-  effects: readonly MaskEffect[] = [],
-) {
+export type MaskRenderOptions = {
+  baseColor: string
+  plugins?: readonly MaskRenderPlugin[]
+}
+
+export function drawMaskRenderPlan(ctx: CanvasRenderingContext2D, plan: MaskRenderPlan, options: MaskRenderOptions) {
+  const plugins = options.plugins ?? []
+  ctx.fillStyle = options.baseColor
+
   for (const run of plan.runs) {
-    const decision = getRunDecision(ctx, plan, effects, run)
+    const decision = getRunDecision(ctx, plan, plugins, run)
     if (decision === 'skip' || decision === 'handled') continue
 
     if (decision === 'glyphs' || needsGlyphSpacingFallback(ctx, plan)) {
-      drawMaterializedRun(ctx, plan, effects, run)
+      drawMaterializedRun(ctx, plan, plugins, run)
       continue
     }
 
+    ctx.fillStyle = options.baseColor
     setCanvasLetterSpacing(ctx, plan.letterSpacing)
     ctx.fillText(run.text, run.x, run.y)
   }
@@ -35,13 +41,13 @@ export function setCanvasLetterSpacing(ctx: CanvasRenderingContext2D, letterSpac
 function getRunDecision(
   ctx: CanvasRenderingContext2D,
   plan: MaskRenderPlan,
-  effects: readonly MaskEffect[],
+  plugins: readonly MaskRenderPlugin[],
   run: TextRun,
 ): MaskDrawDecision {
   let decision: MaskDrawDecision = 'default'
 
-  for (const effect of effects) {
-    const nextDecision = effect.drawRun?.({ ctx, plan, run }) ?? 'default'
+  for (const plugin of plugins) {
+    const nextDecision = plugin.drawRun?.({ ctx, plan, run }) ?? 'default'
     if (nextDecision === 'skip' || nextDecision === 'handled') return nextDecision
     if (nextDecision === 'glyphs') decision = 'glyphs'
   }
@@ -52,7 +58,7 @@ function getRunDecision(
 function drawMaterializedRun(
   ctx: CanvasRenderingContext2D,
   plan: MaskRenderPlan,
-  effects: readonly MaskEffect[],
+  plugins: readonly MaskRenderPlugin[],
   run: TextRun,
 ) {
   const previousAlign = ctx.textAlign
@@ -60,7 +66,7 @@ function drawMaterializedRun(
   setCanvasLetterSpacing(ctx, 0)
 
   for (const glyph of plan.materializeGlyphs(run)) {
-    const decision = getGlyphDecision(ctx, plan, effects, run, glyph)
+    const decision = getGlyphDecision(ctx, plan, plugins, run, glyph)
     if (decision === 'skip' || decision === 'handled') continue
     ctx.fillText(glyph.char, glyph.x, glyph.y)
   }
@@ -75,12 +81,12 @@ function needsGlyphSpacingFallback(ctx: CanvasRenderingContext2D, plan: MaskRend
 function getGlyphDecision(
   ctx: CanvasRenderingContext2D,
   plan: MaskRenderPlan,
-  effects: readonly MaskEffect[],
+  plugins: readonly MaskRenderPlugin[],
   run: TextRun,
   glyph: TextRunGlyph,
 ): MaskGlyphDecision {
-  for (const effect of effects) {
-    const decision = effect.drawGlyph?.({ ctx, plan, run, glyph }) ?? 'default'
+  for (const plugin of plugins) {
+    const decision = plugin.drawGlyph?.({ ctx, plan, run, glyph }) ?? 'default'
     if (decision === 'skip' || decision === 'handled') return decision
   }
 

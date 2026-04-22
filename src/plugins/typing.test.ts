@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { getTypingRunText } from './effects'
-import type { TextRun } from './types'
+import { getTypingRunText } from './typing'
+import type { TextRun } from '../lib'
 
 const run: TextRun = {
   id: 'run-1',
@@ -14,7 +14,7 @@ const run: TextRun = {
   segmentIndex: 0,
 }
 
-describe('typing effect', () => {
+describe('typing plugin', () => {
   it('skips runs after the visible cursor', () => {
     expect(getTypingRunText(run, 10)).toBeNull()
   })

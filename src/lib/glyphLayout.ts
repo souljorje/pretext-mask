@@ -1,5 +1,5 @@
 import { layoutWithLines, prepareWithSegments } from '@chenglou/pretext'
-import type { GlyphInstance, MaskConfig, MaskLayoutConfig } from './types'
+import type { GlyphInstance, MaskLayoutConfig } from './types'
 import { createSeededRandom, makeGlyphStream, splitGlyphs } from './random'
 import { parseViewBox } from './scale'
 
@@ -76,31 +76,8 @@ export function layoutDenseGlyphFieldFromLines(
   return glyphs
 }
 
-export function glitchGlyphs(glyphs: GlyphInstance[], config: MaskConfig, timeMs: number): GlyphInstance[] {
-  const bucket = getGlitchBucket(config, timeMs)
-  if (bucket === null) return glyphs
-
-  return glyphs.map(glyph => {
-    return {
-      ...glyph,
-      char: getGlitchedGlyphChar(glyph, config, bucket),
-    }
-  })
-}
-
 export function fontShorthand(config: MaskLayoutConfig): string {
   return `${config.fontWeight} ${config.fontSize}px ${quoteFontFamily(config.fontFamily)}`
-}
-
-export function getGlitchBucket(config: MaskConfig, timeMs: number): number | null {
-  if (SYMBOL_GLYPHS.length === 0 || config.glitchRate <= 0) return null
-  return Math.floor(timeMs / Math.max(40, 1000 / config.glitchRate))
-}
-
-export function getGlitchedGlyphChar(glyph: GlyphInstance, config: MaskLayoutConfig, bucket: number | null): string {
-  if (bucket === null) return glyph.char
-  const random = createSeededRandom(`${config.seed}:glitch:${bucket}:${glyph.id}`)
-  return random.pick(SYMBOL_GLYPHS)
 }
 
 export function getGlyphStep(config: MaskLayoutConfig): number {

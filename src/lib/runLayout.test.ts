@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { clearRunLayoutCache, createMaskRenderPlan, getRunLayoutCacheSize, type ShapePointTester } from './runLayout'
-import type { MaskConfig, ParsedSvg } from './types'
+import type { MaskLayoutConfig, ParsedSvg } from './types'
 
 const globalWithCanvas = globalThis as typeof globalThis & {
   OffscreenCanvas?: new (width: number, height: number) => {
@@ -34,7 +34,7 @@ const parsed: ParsedSvg = {
   paths: [{ id: 'shape', d: 'M0 0H100V100H0Z', sourceTag: 'path', transform: '' }],
 }
 
-const config: MaskConfig = {
+const config: MaskLayoutConfig = {
   seed: 'runs',
   renderMode: 'inside',
   width: 160,
@@ -45,10 +45,6 @@ const config: MaskConfig = {
   glyphSpacing: 0,
   lineHeight: 16,
   padding: 0,
-  glitchRate: 0,
-  hoverRadius: 40,
-  baseColor: '#111111',
-  accentColor: '#ff0000',
 }
 
 const filledShapeTester: ShapePointTester = {

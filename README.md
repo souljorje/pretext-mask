@@ -32,18 +32,24 @@ npm run smoke
 
 ## Structure
 
-- `src/lib`: reusable mask-generation core.
+- `src/lib`: reusable layout-only mask core.
+- `src/plugins`: canvas renderer and typed render plugins.
 - `src/demo`: Vite UI playground.
 - `src/lib/index.ts`: public library exports.
 
 Core modules:
 
 - `src/lib/runLayout.ts`: creates `MaskRenderPlan` from SVG geometry, config, and generated/caller text.
-- `src/lib/renderer.ts`: run-first canvas renderer with effect hooks.
-- `src/lib/effects.ts`: sample effects, including tested typing behavior.
 - `src/lib/shapeHitTest.ts`: reusable hidden-SVG path hit tester.
 - `src/lib/svgExtract.ts`: parses uploaded SVG into normalized path data.
-- `src/lib/glyphLayout.ts`: compatibility glyph APIs, measurement helpers, and glitch helpers.
+- `src/lib/glyphLayout.ts`: compatibility glyph APIs and measurement helpers.
+
+Plugin modules:
+
+- `src/plugins/renderer.ts`: run-first canvas renderer with typed plugin hooks.
+- `src/plugins/hoverColor.ts`: hover color plugin.
+- `src/plugins/glitch.ts`: glitch plugin.
+- `src/plugins/typing.ts`: tested typing sample plugin.
 
 ## How It Works
 
@@ -55,7 +61,7 @@ The current core path is run-first:
 4. Prepare generated seeded text with Pretext.
 5. Route text through the spans with `layoutNextLine()`.
 6. Render unaffected runs with `ctx.fillText(run.text, run.x, run.y)`.
-7. Materialize glyphs only when an effect needs per-glyph drawing.
+7. Let the plugin renderer materialize glyphs only when an animation needs per-glyph drawing.
 
 Render modes:
 
@@ -81,4 +87,4 @@ Output is PNG only. Same SVG, seed, and layout settings should produce the same 
 
 Seed is internal per image box. The UI does not expose seed editing.
 
-Animations are separate from core layout. Static rendering stays run-level; hover and glitch opt into glyph-level drawing only when needed.
+Animations are outside core layout. Static rendering stays run-level; hover and glitch are `src/plugins` modules that opt into glyph-level drawing only when needed.

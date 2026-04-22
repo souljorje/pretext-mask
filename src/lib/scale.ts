@@ -1,6 +1,6 @@
-import type { MaskConfig } from './types'
+import type { MaskLayoutConfig } from './types'
 
-export function createRenderConfig(viewBox: string, config: MaskConfig): MaskConfig {
+export function createRenderConfig(viewBox: string, config: MaskLayoutConfig): MaskLayoutConfig {
   const fit = fitViewBoxToFrame(viewBox, config.width, config.height, config.padding)
   const unitsPerPixel = fit.unitsPerPixel
 
@@ -10,7 +10,6 @@ export function createRenderConfig(viewBox: string, config: MaskConfig): MaskCon
     glyphSpacing: config.glyphSpacing * unitsPerPixel,
     lineHeight: config.lineHeight * unitsPerPixel,
     padding: config.padding * unitsPerPixel,
-    hoverRadius: config.hoverRadius * unitsPerPixel,
   }
 }
 

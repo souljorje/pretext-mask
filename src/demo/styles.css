@@ -312,7 +312,7 @@ p {
 .gallery {
   width: 100%;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 512px), max-content));
+  grid-template-columns: repeat(auto-fit, minmax(min(90vw, 512px), max-content));
   justify-content: center;
   align-items: start;
   gap: 18px;
@@ -327,7 +327,7 @@ p {
 }
 
 .preview {
-  width: min(100%, 512px);
+  width: min(90vw, 512px);
   height: auto;
   border: 1px solid var(--border-muted);
   background: var(--canvas-bg);
