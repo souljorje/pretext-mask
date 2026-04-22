@@ -7,6 +7,7 @@ Project: Pretext Mask. Vite + TypeScript core library plus browser demo for seed
 - Install: `npm install`
 - Dev: `npm run dev`
 - Test: `npm test`
+- Smoke: `npm run smoke`
 - Build: `npm run build`
 
 Run tests/build before final handoff after code changes.

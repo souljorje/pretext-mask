@@ -10,10 +10,9 @@ export type ShapeHitTester = {
 
 export function createShapeHitTester(parsed: ParsedSvg): ShapeHitTester {
   const svg = createHiddenSvg(parsed)
-  const fillPaths = parsed.paths.map(path => createPathElement(svg, path.d, path.transform))
-  const strokePaths = parsed.paths.map(path => {
+  const pathElements = parsed.paths.map(path => {
     const element = createPathElement(svg, path.d, path.transform)
-    element.setAttribute('fill', 'none')
+    element.setAttribute('fill', 'black')
     element.setAttribute('stroke', 'black')
     element.setAttribute('stroke-linecap', 'round')
     element.setAttribute('stroke-linejoin', 'round')
@@ -24,19 +23,19 @@ export function createShapeHitTester(parsed: ParsedSvg): ShapeHitTester {
     filterByShape(glyphs, mode, sampleRadius = 0) {
       return glyphs.filter(glyph => {
         const overlapsShape = getSamplePoints(glyph.x, glyph.y, sampleRadius).some(point =>
-          fillPaths.some(path => path.isPointInFill(point)),
+          pathElements.some(path => path.isPointInFill(point)),
         )
         return mode === 'inside' ? overlapsShape : !overlapsShape
       })
     },
     filterNearOutline(glyphs, strokeWidth) {
-      for (const path of strokePaths) {
+      for (const path of pathElements) {
         path.setAttribute('stroke-width', String(strokeWidth))
       }
 
       return glyphs.filter(glyph => {
         const point = new DOMPoint(glyph.x, glyph.y)
-        return strokePaths.some(path => path.isPointInStroke(point))
+        return pathElements.some(path => path.isPointInStroke(point))
       })
     },
     dispose() {
@@ -85,6 +84,7 @@ function createHiddenSvg(parsed: ParsedSvg): SVGSVGElement {
   svg.style.width = '0'
   svg.style.height = '0'
   svg.setAttribute('aria-hidden', 'true')
+  svg.dataset.pretextHitTest = 'true'
   document.body.append(svg)
   return svg
 }

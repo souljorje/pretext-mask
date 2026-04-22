@@ -27,6 +27,7 @@ Open `http://localhost:3000/`.
 ```bash
 npm test
 npm run build
+npm run smoke
 ```
 
 ## Structure

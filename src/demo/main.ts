@@ -4,15 +4,16 @@ import {
   createRenderConfig,
   createShapeHitTester,
   extractPathsFromSvgText,
+  fitViewBoxToFrame,
   getGlitchBucket,
   getGlitchedGlyphChar,
   layoutDenseGlyphField,
   makeFallbackSvg,
-  parseViewBox,
   quoteFontFamily,
 } from '../lib'
 
 type AspectPreset = 'custom' | '1:1' | '4:3' | '3:4' | '16:9' | '9:16'
+type ThemeMode = 'light' | 'dark'
 type Point = { x: number; y: number }
 type CanvasState = {
   pixelRatio: number
@@ -38,20 +39,26 @@ type MaskItem = {
   dirty: boolean
 }
 
+const RELAYOUT_DEBOUNCE_MS = 80
+const THEME_STORAGE_KEY = 'pretext-mask-theme'
+const DEFAULT_LIGHT_BASE_COLOR = '#111111'
+const DEFAULT_DARK_BASE_COLOR = '#eeeeee'
+const themeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+
 const config: MaskConfig = {
   seed: 'pretext',
   renderMode: 'outline',
   width: 512,
   height: 512,
   fontFamily: 'Georgia',
-  fontSize: 18,
+  fontSize: 12,
   fontWeight: 700,
   glyphSpacing: 0,
-  lineHeight: 24,
+  lineHeight: 16,
   padding: 0,
   glitchRate: 8,
   hoverRadius: 86,
-  baseColor: '#111111',
+  baseColor: DEFAULT_LIGHT_BASE_COLOR,
   accentColor: '#16a34a',
 }
 
@@ -69,9 +76,14 @@ const layoutKeys = new Set<keyof MaskConfig>([
 let nextMaskId = 1
 let masks: MaskItem[] = [createMaskItem(makeFallbackSvg())]
 let aspectPreset: AspectPreset = '1:1'
+let relayoutTimer: number | null = null
+let pendingRelayoutForce = false
+let activeTheme: ThemeMode | null = null
 
 const app = document.querySelector<HTMLDivElement>('#app')
 if (!app) throw new Error('Missing #app root.')
+
+initTheme()
 
 app.innerHTML = `
   <main class="shell">
@@ -84,15 +96,20 @@ app.innerHTML = `
         </div>
       </div>
 
+      <button id="theme-toggle" class="theme-toggle" type="button" aria-pressed="false">
+        <span class="theme-toggle-label">Dark mode</span>
+        <span class="theme-toggle-track" aria-hidden="true"><span></span></span>
+      </button>
+
       <div class="field-grid">
         ${numberInput('width', 'Width', config.width, 128, 1600, 16)}
         ${numberInput('height', 'Height', config.height, 128, 1600, 16)}
         ${aspectControl(aspectPreset)}
         ${textInput('fontFamily', 'Font', config.fontFamily)}
-        ${numberInput('fontSize', 'Font size', config.fontSize, 8, 80, 1)}
-        ${numberInput('fontWeight', 'Font weight', config.fontWeight, 100, 900, 100)}
+        ${numberInput('fontSize', 'Font size', config.fontSize, 1, 80, 1)}
         ${numberInput('glyphSpacing', 'Letter spacing', config.glyphSpacing, -40, 80, 0.5)}
-        ${numberInput('lineHeight', 'Line height', config.lineHeight, 4, 120, 1)}
+        ${numberInput('lineHeight', 'Line height', config.lineHeight, 1, 120, 1)}
+        ${numberInput('fontWeight', 'Font weight', config.fontWeight, 100, 900, 100)}
         ${numberInput('padding', 'Padding', config.padding, -240, 240, 1)}
         ${numberInput('hoverRadius', 'Hover radius', config.hoverRadius, 10, 240, 1)}
         ${modeControl(config.renderMode)}
@@ -117,11 +134,75 @@ if (!gallery || !status) throw new Error('Missing UI nodes.')
 const galleryNode = gallery
 const statusNode = status
 
+syncThemeToggle()
 bindControls()
 renderGallery()
 relayoutAll(true)
 requestAnimationFrame(animate)
 window.addEventListener('beforeunload', () => masks.forEach(mask => mask.hitTester.dispose()))
+
+function initTheme() {
+  applyTheme(readStoredTheme() ?? getSystemTheme())
+  themeMediaQuery.addEventListener('change', event => {
+    if (readStoredTheme()) return
+    applyTheme(event.matches ? 'dark' : 'light')
+  })
+}
+
+function applyTheme(theme: ThemeMode) {
+  document.documentElement.dataset.theme = theme
+  document.documentElement.style.colorScheme = theme
+  syncThemeDefaultColors(theme)
+  activeTheme = theme
+  syncThemeToggle()
+}
+
+function storeTheme(theme: ThemeMode) {
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, theme)
+  } catch {
+    return
+  }
+}
+
+function readStoredTheme(): ThemeMode | null {
+  try {
+    const theme = localStorage.getItem(THEME_STORAGE_KEY)
+    return theme === 'light' || theme === 'dark' ? theme : null
+  } catch {
+    return null
+  }
+}
+
+function getSystemTheme(): ThemeMode {
+  return themeMediaQuery.matches ? 'dark' : 'light'
+}
+
+function toggleTheme() {
+  const nextTheme: ThemeMode = activeTheme === 'dark' ? 'light' : 'dark'
+  applyTheme(nextTheme)
+  storeTheme(nextTheme)
+  markAllDirty()
+}
+
+function syncThemeToggle() {
+  const toggle = document.querySelector<HTMLButtonElement>('#theme-toggle')
+  if (!toggle || !activeTheme) return
+
+  const isDark = activeTheme === 'dark'
+  toggle.setAttribute('aria-pressed', String(isDark))
+}
+
+function syncThemeDefaultColors(theme: ThemeMode) {
+  const previousDefault = activeTheme === 'dark' ? DEFAULT_DARK_BASE_COLOR : DEFAULT_LIGHT_BASE_COLOR
+  const nextDefault = theme === 'dark' ? DEFAULT_DARK_BASE_COLOR : DEFAULT_LIGHT_BASE_COLOR
+  if (activeTheme !== null && config.baseColor.toLowerCase() !== previousDefault) return
+
+  config.baseColor = nextDefault
+  const input = document.querySelector<HTMLInputElement>('#baseColor')
+  if (input) input.value = nextDefault
+  markAllDirty()
+}
 
 function createMaskItem(svgText: string): MaskItem {
   const id = nextMaskId++
@@ -162,7 +243,7 @@ function bindControls() {
       }
 
       if (layoutKeys.has(key)) {
-        relayoutAll()
+        scheduleRelayoutAll()
       } else {
         markAllDirty()
       }
@@ -191,6 +272,8 @@ function bindControls() {
     renderGallery()
     relayoutAll(true)
   })
+
+  document.querySelector<HTMLButtonElement>('#theme-toggle')?.addEventListener('click', toggleTheme)
 }
 
 function renderGallery() {
@@ -265,10 +348,30 @@ function renderGallery() {
 }
 
 function relayoutAll(force = false) {
+  clearPendingRelayout()
   for (const mask of masks) {
     relayoutItem(mask, force)
   }
   setStatus(`${masks.length} ${masks.length === 1 ? 'box' : 'boxes'}`)
+}
+
+function scheduleRelayoutAll(force = false) {
+  pendingRelayoutForce ||= force
+  if (relayoutTimer !== null) window.clearTimeout(relayoutTimer)
+
+  relayoutTimer = window.setTimeout(() => {
+    const shouldForce = pendingRelayoutForce
+    clearPendingRelayout()
+    relayoutAll(shouldForce)
+  }, RELAYOUT_DEBOUNCE_MS)
+}
+
+function clearPendingRelayout() {
+  if (relayoutTimer !== null) {
+    window.clearTimeout(relayoutTimer)
+    relayoutTimer = null
+  }
+  pendingRelayoutForce = false
 }
 
 function relayoutItem(mask: MaskItem, force = false) {
@@ -327,12 +430,12 @@ function drawMask(mask: MaskItem, glitchBucket: number | null) {
   const width = Math.max(1, config.width)
   const height = Math.max(1, config.height)
   context.clearRect(0, 0, width, height)
-  context.fillStyle = '#ffffff'
+  context.fillStyle = getCanvasBackgroundColor()
   context.fillRect(0, 0, width, height)
 
   const renderConfig = createRenderConfig(mask.parsed.viewBox, getMaskConfig(mask))
-  const transform = createViewBoxTransform(mask.parsed.viewBox, width, height)
-  const fontSize = transform.scaleY(renderConfig.fontSize)
+  const transform = createViewBoxTransform(mask.parsed.viewBox, width, height, config.padding)
+  const fontSize = transform.scale(renderConfig.fontSize)
   context.font = `${renderConfig.fontWeight} ${fontSize}px ${quoteFontFamily(renderConfig.fontFamily)}`
   context.textAlign = 'center'
   context.textBaseline = 'middle'
@@ -393,6 +496,12 @@ function sameCanvasState(left: CanvasState | null, right: CanvasState): boolean 
 }
 
 function exportMask(mask: MaskItem) {
+  if (relayoutTimer !== null) {
+    const shouldForce = pendingRelayoutForce
+    clearPendingRelayout()
+    relayoutAll(shouldForce)
+  }
+
   drawMask(mask, getGlitchBucket(getMaskConfig(mask), performance.now()))
   mask.dirty = false
   mask.canvas?.toBlob(blob => {
@@ -404,6 +513,10 @@ function exportMask(mask: MaskItem) {
     link.click()
     URL.revokeObjectURL(url)
   }, 'image/png')
+}
+
+function getCanvasBackgroundColor(): string {
+  return getComputedStyle(document.documentElement).getPropertyValue('--canvas-bg').trim() || '#ffffff'
 }
 
 function getMaskConfig(mask: MaskItem): MaskConfig {
@@ -432,26 +545,33 @@ function markAllDirty() {
 
 function clientPointToCanvasViewBox(mask: MaskItem, canvas: HTMLCanvasElement, clientX: number, clientY: number): Point {
   const rect = canvas.getBoundingClientRect()
-  const box = parseViewBox(mask.parsed.viewBox)
+  const transform = createViewBoxTransform(mask.parsed.viewBox, rect.width, rect.height, config.padding)
   const xRatio = (clientX - rect.left) / rect.width
   const yRatio = (clientY - rect.top) / rect.height
   return {
-    x: box.x + xRatio * box.width,
-    y: box.y + yRatio * box.height,
+    x: transform.unscaleX(xRatio * rect.width),
+    y: transform.unscaleY(yRatio * rect.height),
   }
 }
 
-function createViewBoxTransform(viewBox: string, width: number, height: number) {
-  const box = parseViewBox(viewBox)
+function createViewBoxTransform(viewBox: string, width: number, height: number, padding: number) {
+  const fit = fitViewBoxToFrame(viewBox, width, height, padding)
+  const box = fit.box
   return {
     x(value: number) {
-      return ((value - box.x) / box.width) * width
+      return fit.x + (value - box.x) * fit.scale
     },
     y(value: number) {
-      return ((value - box.y) / box.height) * height
+      return fit.y + (value - box.y) * fit.scale
     },
-    scaleY(value: number) {
-      return (value / box.height) * height
+    scale(value: number) {
+      return value * fit.scale
+    },
+    unscaleX(value: number) {
+      return box.x + (value - fit.x) / fit.scale
+    },
+    unscaleY(value: number) {
+      return box.y + (value - fit.y) / fit.scale
     },
   }
 }
