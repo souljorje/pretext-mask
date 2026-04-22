@@ -26,7 +26,7 @@ select {
 .shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
   background:
     linear-gradient(90deg, rgba(0, 0, 0, 0.05) 1px, transparent 1px),
     linear-gradient(0deg, rgba(0, 0, 0, 0.05) 1px, transparent 1px),
@@ -40,7 +40,8 @@ select {
   display: flex;
   flex-direction: column;
   gap: 18px;
-  border-right: 1px solid #111111;
+  grid-column: 2;
+  border-left: 1px solid #111111;
   background: #ffffff;
 }
 
@@ -217,6 +218,8 @@ p {
 }
 
 .preview-wrap {
+  grid-column: 1;
+  grid-row: 1;
   min-width: 0;
   min-height: 100vh;
   display: grid;
@@ -230,7 +233,6 @@ p {
   max-height: calc(100vh - 64px);
   border: 1px solid #111111;
   background: #ffffff;
-  box-shadow: 10px 10px 0 #111111;
   touch-action: none;
 }
 
@@ -240,12 +242,16 @@ p {
   }
 
   .control-panel {
+    grid-column: 1;
+    grid-row: 1;
     min-height: auto;
-    border-right: 0;
+    border-left: 0;
     border-bottom: 1px solid #111111;
   }
 
   .preview-wrap {
+    grid-column: 1;
+    grid-row: 2;
     min-height: 60vh;
     padding: 24px;
   }
@@ -253,6 +259,5 @@ p {
   .preview {
     width: min(88vw, 520px);
     max-height: none;
-    box-shadow: 8px 8px 0 #111111;
   }
 }

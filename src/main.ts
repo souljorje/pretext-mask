@@ -1,10 +1,10 @@
 import './styles.css'
 import type { AvatarConfig, GlyphInstance, ParsedSvg } from './types'
 import { extractPathsFromSvgText } from './svgExtract'
-import { glitchGlyphs, layoutDenseGlyphField, layoutGlyphsOnSamplers } from './glyphLayout'
-import { buildStaticSvg, createPathSamplers, makeFallbackSvg } from './svgSampler'
+import { glitchGlyphs, layoutDenseGlyphField } from './glyphLayout'
+import { buildStaticSvg, makeFallbackSvg } from './svgSampler'
 import { createRenderConfig } from './scale'
-import { filterGlyphsByShape } from './shapeHitTest'
+import { filterGlyphsByShape, filterGlyphsNearOutline } from './shapeHitTest'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
@@ -162,8 +162,8 @@ function relayout(force = false) {
   parsed = extractPathsFromSvgText(svgText)
   const renderConfig = createRenderConfig(parsed.viewBox, config)
   if (config.renderMode === 'outline') {
-    const samplers = createPathSamplers(parsed)
-    baseGlyphs = layoutGlyphsOnSamplers(parsed.paths, samplers, renderConfig)
+    const outlineWidth = Math.max(renderConfig.fontSize * 1.45, renderConfig.lineHeight * 0.72)
+    baseGlyphs = filterGlyphsNearOutline(parsed, layoutDenseGlyphField(parsed.viewBox, renderConfig), outlineWidth)
   } else {
     baseGlyphs = filterGlyphsByShape(parsed, layoutDenseGlyphField(parsed.viewBox, renderConfig), config.renderMode)
   }
