@@ -1,15 +1,15 @@
 import './styles.css'
-import type { GlyphInstance, MaskConfig, ParsedSvg, ShapeHitTester } from '../lib'
+import type { MaskConfig, MaskRenderPlan, ParsedSvg, ShapeHitTester, TextRun, TextRunGlyph } from '../lib'
 import {
-  createRenderConfig,
+  createMaskRenderPlan,
   createShapeHitTester,
   extractPathsFromSvgText,
-  fitViewBoxToFrame,
+  canUseCanvasLetterSpacing,
   getGlitchBucket,
   getGlitchedGlyphChar,
-  layoutDenseGlyphField,
   makeFallbackSvg,
   quoteFontFamily,
+  setCanvasLetterSpacing,
 } from '../lib'
 
 type AspectPreset = 'custom' | '1:1' | '4:3' | '3:4' | '16:9' | '9:16'
@@ -30,7 +30,7 @@ type MaskItem = {
   svgVersion: number
   parsed: ParsedSvg
   hitTester: ShapeHitTester
-  baseGlyphs: GlyphInstance[]
+  renderPlan: MaskRenderPlan | null
   pointer: Point | null
   canvas: HTMLCanvasElement | null
   canvasState: CanvasState | null
@@ -56,8 +56,8 @@ const config: MaskConfig = {
   glyphSpacing: 0,
   lineHeight: 16,
   padding: 0,
-  glitchRate: 8,
-  hoverRadius: 86,
+  glitchRate: 4,
+  hoverRadius: 100,
   baseColor: DEFAULT_LIGHT_BASE_COLOR,
   accentColor: '#16a34a',
 }
@@ -214,7 +214,7 @@ function createMaskItem(svgText: string): MaskItem {
     svgVersion: 0,
     parsed,
     hitTester: createShapeHitTester(parsed),
-    baseGlyphs: [],
+    renderPlan: null,
     pointer: null,
     canvas: null,
     canvasState: null,
@@ -304,7 +304,7 @@ function renderGallery() {
     mask.canvasState = null
 
     canvas?.addEventListener('pointermove', event => {
-      setPointer(mask, clientPointToCanvasViewBox(mask, canvas, event.clientX, event.clientY))
+      setPointer(mask, clientPointToCanvasPoint(canvas, event.clientX, event.clientY))
     })
     canvas?.addEventListener('pointerleave', () => {
       setPointer(mask, null)
@@ -391,16 +391,7 @@ function relayoutItem(mask: MaskItem, force = false) {
   if (!force && layoutKey === mask.lastLayoutKey) return
   mask.lastLayoutKey = layoutKey
 
-  const renderConfig = createRenderConfig(mask.parsed.viewBox, getMaskConfig(mask))
-  const denseGlyphs = layoutDenseGlyphField(mask.parsed.viewBox, renderConfig)
-
-  if (config.renderMode === 'outline') {
-    const outlineWidth = Math.max(renderConfig.fontSize * 1.45, renderConfig.lineHeight * 0.72)
-    mask.baseGlyphs = mask.hitTester.filterNearOutline(denseGlyphs, outlineWidth)
-  } else {
-    mask.baseGlyphs = mask.hitTester.filterByShape(denseGlyphs, config.renderMode, renderConfig.fontSize * 0.75)
-  }
-
+  mask.renderPlan = createMaskRenderPlan(mask.parsed, mask.hitTester, getMaskConfig(mask))
   markDirty(mask)
 }
 
@@ -433,32 +424,38 @@ function drawMask(mask: MaskItem, glitchBucket: number | null) {
   context.fillStyle = getCanvasBackgroundColor()
   context.fillRect(0, 0, width, height)
 
-  const renderConfig = createRenderConfig(mask.parsed.viewBox, getMaskConfig(mask))
-  const transform = createViewBoxTransform(mask.parsed.viewBox, width, height, config.padding)
-  const fontSize = transform.scale(renderConfig.fontSize)
-  context.font = `${renderConfig.fontWeight} ${fontSize}px ${quoteFontFamily(renderConfig.fontFamily)}`
-  context.textAlign = 'center'
+  const renderConfig = getMaskConfig(mask)
+  const plan = mask.renderPlan
+  if (!plan) return
+
+  context.font = plan.font || `${renderConfig.fontWeight} ${renderConfig.fontSize}px ${quoteFontFamily(renderConfig.fontFamily)}`
+  context.textAlign = 'left'
   context.textBaseline = 'middle'
 
   const pointer = mask.pointer
   const baseRgb = hexToRgb(config.baseColor)
   const accentRgb = hexToRgb(config.accentColor)
+  const canDrawSpacedRuns = renderConfig.glyphSpacing === 0 || canUseCanvasLetterSpacing(context)
 
-  if (!pointer) {
+  if (!pointer && glitchBucket === null && canDrawSpacedRuns) {
+    setCanvasLetterSpacing(context, plan.letterSpacing)
     context.fillStyle = config.baseColor
-    for (const glyph of mask.baseGlyphs) {
-      context.fillText(getGlitchedGlyphChar(glyph, renderConfig, glitchBucket), transform.x(glyph.x), transform.y(glyph.y))
+    for (const run of plan.runs) {
+      context.fillText(run.text, run.x, run.y)
     }
     return
   }
 
-  for (const glyph of mask.baseGlyphs) {
-    const distance = Math.hypot(glyph.x - pointer.x, glyph.y - pointer.y)
-    context.fillStyle =
-      distance > renderConfig.hoverRadius
-        ? config.baseColor
-        : mixRgb(accentRgb, baseRgb, distance / renderConfig.hoverRadius)
-    context.fillText(getGlitchedGlyphChar(glyph, renderConfig, glitchBucket), transform.x(glyph.x), transform.y(glyph.y))
+  for (const run of plan.runs) {
+    if (glitchBucket === null && pointer && canDrawSpacedRuns && !runIntersectsPointer(run, pointer, renderConfig)) {
+      context.textAlign = 'left'
+      setCanvasLetterSpacing(context, plan.letterSpacing)
+      context.fillStyle = config.baseColor
+      context.fillText(run.text, run.x, run.y)
+      continue
+    }
+
+    drawGlyphRun(context, plan.materializeGlyphs(run), renderConfig, pointer, baseRgb, accentRgb, glitchBucket)
   }
 }
 
@@ -543,36 +540,51 @@ function markAllDirty() {
   }
 }
 
-function clientPointToCanvasViewBox(mask: MaskItem, canvas: HTMLCanvasElement, clientX: number, clientY: number): Point {
+function clientPointToCanvasPoint(canvas: HTMLCanvasElement, clientX: number, clientY: number): Point {
   const rect = canvas.getBoundingClientRect()
-  const transform = createViewBoxTransform(mask.parsed.viewBox, rect.width, rect.height, config.padding)
   const xRatio = (clientX - rect.left) / rect.width
   const yRatio = (clientY - rect.top) / rect.height
   return {
-    x: transform.unscaleX(xRatio * rect.width),
-    y: transform.unscaleY(yRatio * rect.height),
+    x: xRatio * config.width,
+    y: yRatio * config.height,
   }
 }
 
-function createViewBoxTransform(viewBox: string, width: number, height: number, padding: number) {
-  const fit = fitViewBoxToFrame(viewBox, width, height, padding)
-  const box = fit.box
-  return {
-    x(value: number) {
-      return fit.x + (value - box.x) * fit.scale
-    },
-    y(value: number) {
-      return fit.y + (value - box.y) * fit.scale
-    },
-    scale(value: number) {
-      return value * fit.scale
-    },
-    unscaleX(value: number) {
-      return box.x + (value - fit.x) / fit.scale
-    },
-    unscaleY(value: number) {
-      return box.y + (value - fit.y) / fit.scale
-    },
+function runIntersectsPointer(run: TextRun, pointer: Point, renderConfig: MaskConfig): boolean {
+  const radius = renderConfig.hoverRadius
+  const halfLine = renderConfig.lineHeight / 2
+  return (
+    pointer.x >= run.x - radius &&
+    pointer.x <= run.x + run.width + radius &&
+    pointer.y >= run.y - radius - halfLine &&
+    pointer.y <= run.y + radius + halfLine
+  )
+}
+
+function drawGlyphRun(
+  context: CanvasRenderingContext2D,
+  glyphs: readonly TextRunGlyph[],
+  renderConfig: MaskConfig,
+  pointer: Point | null,
+  baseRgb: [number, number, number],
+  accentRgb: [number, number, number],
+  glitchBucket: number | null,
+) {
+  context.textAlign = 'center'
+  setCanvasLetterSpacing(context, 0)
+
+  for (const glyph of glyphs) {
+    if (!pointer) {
+      context.fillStyle = config.baseColor
+    } else {
+      const distance = Math.hypot(glyph.x - pointer.x, glyph.y - pointer.y)
+      context.fillStyle =
+        distance > renderConfig.hoverRadius
+          ? config.baseColor
+          : mixRgb(accentRgb, baseRgb, distance / renderConfig.hoverRadius)
+    }
+
+    context.fillText(getGlitchedGlyphChar(glyph, renderConfig, glitchBucket), glyph.x, glyph.y)
   }
 }
 

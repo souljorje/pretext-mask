@@ -3,6 +3,8 @@ import type { ParsedSvg, RenderMode } from './types'
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
 export type ShapeHitTester = {
+  isPointInShape(point: { x: number; y: number }, mode: Exclude<RenderMode, 'outline'>, sampleRadius?: number): boolean
+  isPointNearOutline(point: { x: number; y: number }, strokeWidth: number): boolean
   filterByShape<T extends { x: number; y: number }>(glyphs: readonly T[], mode: Exclude<RenderMode, 'outline'>, sampleRadius?: number): T[]
   filterNearOutline<T extends { x: number; y: number }>(glyphs: readonly T[], strokeWidth: number): T[]
   dispose(): void
@@ -19,24 +21,37 @@ export function createShapeHitTester(parsed: ParsedSvg): ShapeHitTester {
     return element
   })
 
+  const setStrokeWidth = (strokeWidth: number) => {
+    for (const path of pathElements) {
+      path.setAttribute('stroke-width', String(strokeWidth))
+    }
+  }
+
+  const isPointInShape = (
+    point: { x: number; y: number },
+    mode: Exclude<RenderMode, 'outline'>,
+    sampleRadius = 0,
+  ): boolean => {
+    const overlapsShape = getSamplePoints(point.x, point.y, sampleRadius).some(sample =>
+      pathElements.some(path => path.isPointInFill(sample)),
+    )
+    return mode === 'inside' ? overlapsShape : !overlapsShape
+  }
+
+  const isPointNearOutline = (point: { x: number; y: number }, strokeWidth: number): boolean => {
+    setStrokeWidth(strokeWidth)
+    const sample = new DOMPoint(point.x, point.y)
+    return pathElements.some(path => path.isPointInStroke(sample))
+  }
+
   return {
+    isPointInShape,
+    isPointNearOutline,
     filterByShape(glyphs, mode, sampleRadius = 0) {
-      return glyphs.filter(glyph => {
-        const overlapsShape = getSamplePoints(glyph.x, glyph.y, sampleRadius).some(point =>
-          pathElements.some(path => path.isPointInFill(point)),
-        )
-        return mode === 'inside' ? overlapsShape : !overlapsShape
-      })
+      return glyphs.filter(glyph => isPointInShape(glyph, mode, sampleRadius))
     },
     filterNearOutline(glyphs, strokeWidth) {
-      for (const path of pathElements) {
-        path.setAttribute('stroke-width', String(strokeWidth))
-      }
-
-      return glyphs.filter(glyph => {
-        const point = new DOMPoint(glyph.x, glyph.y)
-        return pathElements.some(path => path.isPointInStroke(point))
-      })
+      return glyphs.filter(glyph => isPointNearOutline(glyph, strokeWidth))
     },
     dispose() {
       svg.remove()

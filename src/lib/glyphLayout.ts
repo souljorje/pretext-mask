@@ -1,5 +1,5 @@
 import { layoutWithLines, prepareWithSegments } from '@chenglou/pretext'
-import type { GlyphInstance, MaskConfig } from './types'
+import type { GlyphInstance, MaskConfig, MaskLayoutConfig } from './types'
 import { createSeededRandom, makeGlyphStream, splitGlyphs } from './random'
 import { parseViewBox } from './scale'
 
@@ -10,7 +10,7 @@ const widthMapCache = new Map<string, Map<string, number>>()
 const averageAdvanceCache = new Map<string, number>()
 let measureContext: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null | undefined
 
-export function layoutDenseGlyphField(parsedViewBox: string, config: MaskConfig): GlyphInstance[] {
+export function layoutDenseGlyphField(parsedViewBox: string, config: MaskLayoutConfig): GlyphInstance[] {
   const box = parseViewBox(parsedViewBox)
   const lineHeight = Math.max(config.lineHeight, config.fontSize)
   const rowBounds = getRowBounds(box, lineHeight)
@@ -27,7 +27,7 @@ export function layoutDenseGlyphField(parsedViewBox: string, config: MaskConfig)
 
 export function layoutDenseGlyphFieldFromLines(
   parsedViewBox: string,
-  config: MaskConfig,
+  config: MaskLayoutConfig,
   lines: readonly string[],
   fallbackText: string,
 ): GlyphInstance[] {
@@ -88,7 +88,7 @@ export function glitchGlyphs(glyphs: GlyphInstance[], config: MaskConfig, timeMs
   })
 }
 
-export function fontShorthand(config: MaskConfig): string {
+export function fontShorthand(config: MaskLayoutConfig): string {
   return `${config.fontWeight} ${config.fontSize}px ${quoteFontFamily(config.fontFamily)}`
 }
 
@@ -97,19 +97,19 @@ export function getGlitchBucket(config: MaskConfig, timeMs: number): number | nu
   return Math.floor(timeMs / Math.max(40, 1000 / config.glitchRate))
 }
 
-export function getGlitchedGlyphChar(glyph: GlyphInstance, config: MaskConfig, bucket: number | null): string {
+export function getGlitchedGlyphChar(glyph: GlyphInstance, config: MaskLayoutConfig, bucket: number | null): string {
   if (bucket === null) return glyph.char
   const random = createSeededRandom(`${config.seed}:glitch:${bucket}:${glyph.id}`)
   return random.pick(SYMBOL_GLYPHS)
 }
 
-export function getGlyphStep(config: MaskConfig): number {
+export function getGlyphStep(config: MaskLayoutConfig): number {
   const naturalAdvance = measureAverageGlyphAdvance(config)
   const minimumAdvance = Math.max(0.1, config.fontSize * 0.01)
   return Math.max(minimumAdvance, naturalAdvance + config.glyphSpacing)
 }
 
-export function measureAverageGlyphAdvance(config: MaskConfig): number {
+export function measureAverageGlyphAdvance(config: MaskLayoutConfig): number {
   const key = measureCacheKey(config)
   const cached = averageAdvanceCache.get(key)
   if (cached !== undefined) return cached
@@ -121,7 +121,7 @@ export function measureAverageGlyphAdvance(config: MaskConfig): number {
   return average
 }
 
-export function measureGlyphWidthMap(config: MaskConfig): Map<string, number> {
+export function measureGlyphWidthMap(config: MaskLayoutConfig): Map<string, number> {
   const key = measureCacheKey(config)
   const cached = widthMapCache.get(key)
   if (cached) return cached
@@ -178,7 +178,7 @@ function getMeasureContext(): CanvasRenderingContext2D | OffscreenCanvasRenderin
   return null
 }
 
-function measureCacheKey(config: MaskConfig): string {
+function measureCacheKey(config: MaskLayoutConfig): string {
   return `${config.fontWeight}|${config.fontSize}|${config.fontFamily}`
 }
 
