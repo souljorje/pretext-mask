@@ -1,6 +1,6 @@
 export type RenderMode = 'outline' | 'inside' | 'outside'
 
-export type AvatarConfig = {
+export type MaskConfig = {
   seed: string
   renderMode: RenderMode
   width: number

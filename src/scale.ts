@@ -1,6 +1,6 @@
-import type { AvatarConfig } from './types'
+import type { MaskConfig } from './types'
 
-export function createRenderConfig(viewBox: string, config: AvatarConfig): AvatarConfig {
+export function createRenderConfig(viewBox: string, config: MaskConfig): MaskConfig {
   const box = parseViewBox(viewBox)
   const longestSide = Math.max(box.width, box.height)
   const longestOutputSide = Math.max(config.width, config.height)

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { chunkGlyphsByMeasuredBudget, getGlyphStep, glitchGlyphs, layoutDenseGlyphFieldFromLines } from './glyphLayout'
-import type { AvatarConfig } from './types'
+import type { MaskConfig } from './types'
 
 describe('glyph chunking', () => {
   it('does not exceed measured budget', () => {
@@ -10,7 +10,7 @@ describe('glyph chunking', () => {
   })
 
   it('generates deterministic dense fields', () => {
-    const config: AvatarConfig = {
+    const config: MaskConfig = {
       seed: 'dense',
       renderMode: 'inside',
       width: 100,
@@ -34,7 +34,7 @@ describe('glyph chunking', () => {
   })
 
   it('glitches every glyph without canonical fallback', () => {
-    const config: AvatarConfig = {
+    const config: MaskConfig = {
       seed: 'glitch',
       renderMode: 'inside',
       width: 100,
@@ -71,7 +71,7 @@ describe('glyph chunking', () => {
   })
 
   it('treats spacing as an adjustment around natural glyph advance', () => {
-    const baseConfig: AvatarConfig = {
+    const baseConfig: MaskConfig = {
       seed: 'spacing',
       renderMode: 'outline',
       width: 100,
@@ -94,7 +94,7 @@ describe('glyph chunking', () => {
   })
 
   it('places dense glyphs with nondecreasing measured spacing at zero', () => {
-    const config: AvatarConfig = {
+    const config: MaskConfig = {
       seed: 'spacing',
       renderMode: 'inside',
       width: 100,
@@ -120,7 +120,7 @@ describe('glyph chunking', () => {
   })
 
   it('moves rows inward when padding increases', () => {
-    const config: AvatarConfig = {
+    const config: MaskConfig = {
       seed: 'padding',
       renderMode: 'inside',
       width: 100,

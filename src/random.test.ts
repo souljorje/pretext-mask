@@ -3,8 +3,8 @@ import { createSeededRandom, makeGlyphStream, splitGlyphs } from './random'
 
 describe('seeded random', () => {
   it('returns the same sequence for the same seed', () => {
-    const a = createSeededRandom('avatar')
-    const b = createSeededRandom('avatar')
+    const a = createSeededRandom('mask')
+    const b = createSeededRandom('mask')
 
     expect([a.next(), a.next(), a.next()]).toEqual([b.next(), b.next(), b.next()])
   })

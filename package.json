@@ -1,7 +1,7 @@
 {
-  "name": "pretext-avatars",
+  "name": "pretext-mask",
   "version": "1.0.0",
-  "description": "Seeded SVG outline avatar generator powered by Pretext text measurement.",
+  "description": "Seeded SVG glyph mask generator powered by Pretext text measurement.",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
@@ -10,7 +10,8 @@
     "test": "vitest run"
   },
   "keywords": [
-    "avatars",
+    "masks",
+    "glyphs",
     "svg",
     "pretext"
   ],

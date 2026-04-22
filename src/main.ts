@@ -1,5 +1,5 @@
 import './styles.css'
-import type { AvatarConfig, GlyphInstance, ParsedSvg } from './types'
+import type { GlyphInstance, MaskConfig, ParsedSvg } from './types'
 import { extractPathsFromSvgText } from './svgExtract'
 import { glitchGlyphs, layoutDenseGlyphField } from './glyphLayout'
 import { makeFallbackSvg } from './svgSampler'
@@ -9,7 +9,7 @@ import { filterGlyphsByShape, filterGlyphsNearOutline } from './shapeHitTest'
 
 type AspectPreset = 'custom' | '1:1' | '4:3' | '3:4' | '16:9' | '9:16'
 
-const config: AvatarConfig = {
+const config: MaskConfig = {
   seed: 'pretext-001',
   renderMode: 'outline',
   width: 512,
@@ -40,12 +40,12 @@ if (!app) throw new Error('Missing #app root.')
 
 app.innerHTML = `
   <main class="shell">
-    <section class="control-panel" aria-label="Avatar controls">
+    <section class="control-panel" aria-label="Mask controls">
       <div class="brand">
         <span class="brand-mark">P</span>
         <div>
-          <h1>Pretext Avatars</h1>
-          <p>Seeded glyphs on SVG outlines</p>
+          <h1>Pretext Mask</h1>
+          <p>Seeded glyph masks for SVGs</p>
         </div>
       </div>
 
@@ -76,8 +76,8 @@ app.innerHTML = `
       <div id="status" class="status" role="status"></div>
     </section>
 
-    <section class="preview-wrap" aria-label="Avatar preview">
-      <canvas id="preview" class="preview" role="img" aria-label="Generated avatar"></canvas>
+    <section class="preview-wrap" aria-label="Mask preview">
+      <canvas id="preview" class="preview" role="img" aria-label="Generated glyph mask"></canvas>
     </section>
   </main>
 `
@@ -93,7 +93,7 @@ relayout()
 requestAnimationFrame(animate)
 
 function bindControls() {
-  for (const key of Object.keys(config) as Array<keyof AvatarConfig>) {
+  for (const key of Object.keys(config) as Array<keyof MaskConfig>) {
     const input = document.querySelector<HTMLInputElement | HTMLSelectElement>(`#${key}`)
     if (!input) continue
 
@@ -116,7 +116,7 @@ function bindControls() {
   for (const input of document.querySelectorAll<HTMLInputElement>('input[name="renderMode"]')) {
     input.addEventListener('change', () => {
       if (!input.checked) return
-      config.renderMode = input.value as AvatarConfig['renderMode']
+      config.renderMode = input.value as MaskConfig['renderMode']
       relayout()
     })
   }
@@ -150,7 +150,7 @@ function bindControls() {
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `pretext-avatar-${config.seed || 'seed'}.png`
+      link.download = `pretext-mask-${config.seed || 'seed'}.png`
       link.click()
       URL.revokeObjectURL(url)
     }, 'image/png')
@@ -295,31 +295,31 @@ function setStatus(message: string) {
   statusNode.textContent = message
 }
 
-function textInput(id: keyof AvatarConfig, label: string, value: string): string {
+function textInput(id: keyof MaskConfig, label: string, value: string): string {
   return `<label class="field"><span>${label}</span><input id="${id}" type="text" value="${escapeHtml(value)}" /></label>`
 }
 
-function numberInput(id: keyof AvatarConfig, label: string, value: number, min: number, max: number, step: number): string {
+function numberInput(id: keyof MaskConfig, label: string, value: number, min: number, max: number, step: number): string {
   return `<label class="field"><span>${label}</span><input id="${id}" type="number" value="${value}" min="${min}" max="${max}" step="${step}" /></label>`
 }
 
-function sliderInput(id: keyof AvatarConfig, label: string, value: number, min: number, max: number, step: number): string {
+function sliderInput(id: keyof MaskConfig, label: string, value: number, min: number, max: number, step: number): string {
   return `<label class="field field-slider">
     <span>${label} <output id="${id}-value">${value}</output></span>
     <input id="${id}" type="range" value="${value}" min="${min}" max="${max}" step="${step}" />
   </label>`
 }
 
-function colorInput(id: keyof AvatarConfig, label: string, value: string): string {
+function colorInput(id: keyof MaskConfig, label: string, value: string): string {
   return `<label class="field field-color"><span>${label}</span><input id="${id}" type="color" value="${value}" /></label>`
 }
 
-function updateOutputValue(key: keyof AvatarConfig, value: string) {
+function updateOutputValue(key: keyof MaskConfig, value: string) {
   document.querySelector<HTMLOutputElement>(`#${key}-value`)?.replaceChildren(value)
 }
 
-function modeControl(value: AvatarConfig['renderMode']): string {
-  const option = (mode: AvatarConfig['renderMode'], label: string) => `
+function modeControl(value: MaskConfig['renderMode']): string {
+  const option = (mode: MaskConfig['renderMode'], label: string) => `
     <label class="mode-option">
       <input type="radio" name="renderMode" value="${mode}"${value === mode ? ' checked' : ''} />
       <span>${label}</span>

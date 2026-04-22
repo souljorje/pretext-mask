@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Project: Pretext Avatars. Vite + TypeScript browser app that generates seeded glyph-avatar textures from SVG shapes.
+Project: Pretext Mask. Vite + TypeScript browser app that generates seeded glyph masks from SVG shapes.
 
 ## Commands
 

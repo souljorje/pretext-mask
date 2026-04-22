@@ -1,6 +1,6 @@
-# Pretext Avatars
+# Pretext Mask
 
-Seeded glyph-avatar generator for SVG shapes. Upload an SVG, choose how glyphs relate to the shape, preview on canvas, and export PNG.
+Seeded glyph mask generator for SVG shapes. Upload an SVG, choose how glyphs relate to the shape, preview on canvas, and export PNG.
 
 ## Features
 

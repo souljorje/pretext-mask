@@ -6,7 +6,7 @@ import {
   type LayoutCursor,
   type PreparedTextWithSegments,
 } from '@chenglou/pretext'
-import type { AvatarConfig, ExtractedPath, GlyphInstance } from './types'
+import type { ExtractedPath, GlyphInstance, MaskConfig } from './types'
 import { createSeededRandom, makeGlyphStream, splitGlyphs } from './random'
 import { parseViewBox } from './scale'
 
@@ -23,7 +23,7 @@ export type GlyphTextSource = {
   cursor: LayoutCursor
 }
 
-export function createGlyphTextSource(config: AvatarConfig, pathCount: number): GlyphTextSource {
+export function createGlyphTextSource(config: MaskConfig, pathCount: number): GlyphTextSource {
   const streamLength = Math.max(2000, pathCount * 900)
   const stream = makeGlyphStream(`${config.seed}:glyphs`, SYMBOL_ALPHABET, streamLength)
   const prepared = prepareWithSegments(stream, fontShorthand(config), {
@@ -40,7 +40,7 @@ export function createGlyphTextSource(config: AvatarConfig, pathCount: number): 
 export function layoutGlyphsOnSamplers(
   paths: ExtractedPath[],
   samplers: PathSampler[],
-  config: AvatarConfig,
+  config: MaskConfig,
 ): GlyphInstance[] {
   const source = createGlyphTextSource(config, paths.length)
   const glyphs: GlyphInstance[] = []
@@ -79,7 +79,7 @@ export function layoutGlyphsOnSamplers(
   return glyphs
 }
 
-export function layoutDenseGlyphField(parsedViewBox: string, config: AvatarConfig): GlyphInstance[] {
+export function layoutDenseGlyphField(parsedViewBox: string, config: MaskConfig): GlyphInstance[] {
   const box = parseViewBox(parsedViewBox)
   const lineHeight = Math.max(config.lineHeight, config.fontSize)
   const rowBounds = getRowBounds(box, config, lineHeight)
@@ -97,7 +97,7 @@ export function layoutDenseGlyphField(parsedViewBox: string, config: AvatarConfi
 
 export function layoutDenseGlyphFieldFromLines(
   parsedViewBox: string,
-  config: AvatarConfig,
+  config: MaskConfig,
   lines: readonly string[],
   fallbackText: string,
 ): GlyphInstance[] {
@@ -165,7 +165,7 @@ export function chunkGlyphsByMeasuredBudget(
   return output
 }
 
-export function glitchGlyphs(glyphs: GlyphInstance[], config: AvatarConfig, timeMs: number): GlyphInstance[] {
+export function glitchGlyphs(glyphs: GlyphInstance[], config: MaskConfig, timeMs: number): GlyphInstance[] {
   const alphabet = splitGlyphs(SYMBOL_ALPHABET).filter(glyph => glyph.trim().length > 0)
   if (alphabet.length === 0 || config.glitchRate <= 0) return glyphs
 
@@ -180,23 +180,23 @@ export function glitchGlyphs(glyphs: GlyphInstance[], config: AvatarConfig, time
   })
 }
 
-export function fontShorthand(config: AvatarConfig): string {
+export function fontShorthand(config: MaskConfig): string {
   return `${config.fontWeight} ${config.fontSize}px ${quoteFontFamily(config.fontFamily)}`
 }
 
-export function getGlyphStep(config: AvatarConfig): number {
+export function getGlyphStep(config: MaskConfig): number {
   const naturalAdvance = measureAverageGlyphAdvance(config)
   const minimumAdvance = Math.max(0.1, config.fontSize * 0.01)
   return Math.max(minimumAdvance, naturalAdvance + config.glyphSpacing)
 }
 
-export function measureAverageGlyphAdvance(config: AvatarConfig): number {
+export function measureAverageGlyphAdvance(config: MaskConfig): number {
   const widths = [...measureGlyphWidthMap(config).values()]
   if (widths.length === 0) return config.fontSize * 0.82
   return widths.reduce((sum, width) => sum + width, 0) / widths.length
 }
 
-export function measureGlyphWidthMap(config: AvatarConfig): Map<string, number> {
+export function measureGlyphWidthMap(config: MaskConfig): Map<string, number> {
   const glyphs = splitGlyphs(SYMBOL_ALPHABET).filter(glyph => glyph.trim().length > 0)
   const context = getMeasureContext()
   if (!context || glyphs.length === 0) {
@@ -216,7 +216,7 @@ export function measureGlyphWidthMap(config: AvatarConfig): Map<string, number> 
   )
 }
 
-export function measureVerticalMetrics(config: AvatarConfig): { ascent: number; descent: number } {
+export function measureVerticalMetrics(config: MaskConfig): { ascent: number; descent: number } {
   const context = getMeasureContext()
   if (!context) return { ascent: config.fontSize * 0.8, descent: config.fontSize * 0.2 }
 
@@ -230,7 +230,7 @@ export function measureVerticalMetrics(config: AvatarConfig): { ascent: number; 
 
 function getRowBounds(
   box: { y: number; height: number },
-  config: AvatarConfig,
+  config: MaskConfig,
   lineHeight: number,
 ): { top: number; step: number; count: number } {
   const top = box.y + config.padding
