@@ -19,7 +19,8 @@ const parsed: ParsedSvg = {
 const config: AvatarConfig = {
   seed: 'test',
   renderMode: 'inside',
-  size: 100,
+  width: 100,
+  height: 100,
   fontFamily: 'Georgia',
   fontSize: 12,
   fontWeight: 700,

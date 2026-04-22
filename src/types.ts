@@ -3,7 +3,8 @@ export type RenderMode = 'outline' | 'inside' | 'outside'
 export type AvatarConfig = {
   seed: string
   renderMode: RenderMode
-  size: number
+  width: number
+  height: number
   fontFamily: string
   fontSize: number
   fontWeight: number

@@ -7,11 +7,13 @@ import { createRenderConfig } from './scale'
 import { filterGlyphsByShape, filterGlyphsNearOutline } from './shapeHitTest'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
+type AspectPreset = 'custom' | '1:1' | '4:3' | '3:4' | '16:9' | '9:16'
 
 const config: AvatarConfig = {
   seed: 'pretext-001',
   renderMode: 'outline',
-  size: 512,
+  width: 512,
+  height: 512,
   fontFamily: 'Georgia',
   fontSize: 18,
   fontWeight: 700,
@@ -30,6 +32,7 @@ let baseGlyphs: GlyphInstance[] = []
 let displayGlyphs: GlyphInstance[] = []
 let pointer: { x: number; y: number } | null = null
 let lastLayoutKey = ''
+let aspectPreset: AspectPreset = '1:1'
 
 const app = document.querySelector<HTMLDivElement>('#app')
 if (!app) throw new Error('Missing #app root.')
@@ -52,8 +55,10 @@ app.innerHTML = `
 
       <div class="field-grid">
         ${modeControl(config.renderMode)}
+        ${aspectControl(aspectPreset)}
         ${textInput('seed', 'Seed', config.seed)}
-        ${numberInput('size', 'Size', config.size, 128, 1200, 16)}
+        ${numberInput('width', 'Width', config.width, 128, 1600, 16)}
+        ${numberInput('height', 'Height', config.height, 128, 1600, 16)}
         ${textInput('fontFamily', 'Font', config.fontFamily)}
         ${numberInput('fontSize', 'Font size', config.fontSize, 8, 80, 1)}
         ${numberInput('fontWeight', 'Weight', config.fontWeight, 100, 900, 100)}
@@ -95,6 +100,10 @@ function bindControls() {
       if (typeof current === 'number') {
         config[key] = Number(input.value) as never
         updateOutputValue(key, input.value)
+        if (key === 'width' || key === 'height') {
+          aspectPreset = detectAspectPreset(config.width, config.height)
+          syncAspectRadios()
+        }
       } else {
         config[key] = input.value as never
       }
@@ -106,6 +115,15 @@ function bindControls() {
     input.addEventListener('change', () => {
       if (!input.checked) return
       config.renderMode = input.value as AvatarConfig['renderMode']
+      relayout()
+    })
+  }
+
+  for (const input of document.querySelectorAll<HTMLInputElement>('input[name="aspectPreset"]')) {
+    input.addEventListener('change', () => {
+      if (!input.checked) return
+      aspectPreset = input.value as AspectPreset
+      applyAspectPreset(aspectPreset)
       relayout()
     })
   }
@@ -154,7 +172,8 @@ function relayout(force = false) {
     glyphSpacing: config.glyphSpacing,
     letterSpacing: config.letterSpacing,
     lineHeight: config.lineHeight,
-    size: config.size,
+    width: config.width,
+    height: config.height,
   })
   if (!force && layoutKey === lastLayoutKey) return
   lastLayoutKey = layoutKey
@@ -182,10 +201,10 @@ function animate(timeMs: number) {
 function draw(glyphs: readonly GlyphInstance[]) {
   previewSvg.replaceChildren()
   previewSvg.setAttribute('viewBox', parsed.viewBox)
-  previewSvg.setAttribute('width', String(config.size))
-  previewSvg.setAttribute('height', String(config.size))
-  previewSvg.style.maxWidth = `${config.size}px`
-  previewSvg.style.aspectRatio = '1 / 1'
+  previewSvg.setAttribute('width', String(config.width))
+  previewSvg.setAttribute('height', String(config.height))
+  previewSvg.style.maxWidth = `${config.width}px`
+  previewSvg.style.aspectRatio = `${config.width} / ${config.height}`
 
   const background = document.createElementNS(SVG_NS, 'rect')
   background.setAttribute('width', '100%')
@@ -291,6 +310,65 @@ function modeControl(value: AvatarConfig['renderMode']): string {
       ${option('outside', 'Outside')}
     </div>
   </div>`
+}
+
+function aspectControl(value: AspectPreset): string {
+  const option = (preset: AspectPreset, label: string) => `
+    <label class="mode-option">
+      <input type="radio" name="aspectPreset" value="${preset}"${value === preset ? ' checked' : ''} />
+      <span>${label}</span>
+    </label>`
+
+  return `<div class="field field-mode">
+    <span>Aspect</span>
+    <div class="mode-toggle aspect-toggle" role="radiogroup" aria-label="Aspect ratio">
+      ${option('custom', 'Free')}
+      ${option('1:1', '1:1')}
+      ${option('4:3', '4:3')}
+      ${option('3:4', '3:4')}
+      ${option('16:9', '16:9')}
+      ${option('9:16', '9:16')}
+    </div>
+  </div>`
+}
+
+function applyAspectPreset(preset: AspectPreset) {
+  if (preset === 'custom') return
+
+  const [widthRatio, heightRatio] = preset.split(':').map(value => Number.parseInt(value, 10))
+  const longestSide = Math.max(config.width, config.height)
+
+  if (widthRatio >= heightRatio) {
+    config.width = longestSide
+    config.height = Math.round((longestSide * heightRatio) / widthRatio)
+  } else {
+    config.height = longestSide
+    config.width = Math.round((longestSide * widthRatio) / heightRatio)
+  }
+
+  syncDimensionInputs()
+}
+
+function detectAspectPreset(width: number, height: number): AspectPreset {
+  const presets: AspectPreset[] = ['1:1', '4:3', '3:4', '16:9', '9:16']
+  const ratio = width / height
+  return presets.find(preset => {
+    const [presetWidth, presetHeight] = preset.split(':').map(value => Number.parseInt(value, 10))
+    return Math.abs(ratio - presetWidth / presetHeight) < 0.01
+  }) ?? 'custom'
+}
+
+function syncDimensionInputs() {
+  const widthInput = document.querySelector<HTMLInputElement>('#width')
+  const heightInput = document.querySelector<HTMLInputElement>('#height')
+  if (widthInput) widthInput.value = String(config.width)
+  if (heightInput) heightInput.value = String(config.height)
+}
+
+function syncAspectRadios() {
+  for (const input of document.querySelectorAll<HTMLInputElement>('input[name="aspectPreset"]')) {
+    input.checked = input.value === aspectPreset
+  }
 }
 
 function escapeHtml(value: string): string {

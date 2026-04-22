@@ -82,7 +82,7 @@ export function buildStaticSvg(parsed: ParsedSvg, glyphs: readonly GlyphInstance
     })
     .join('\n  ')
 
-  return `<svg xmlns="${SVG_NS}" viewBox="${escapeXml(parsed.viewBox)}" width="${config.size}" height="${config.size}">
+  return `<svg xmlns="${SVG_NS}" viewBox="${escapeXml(parsed.viewBox)}" width="${config.width}" height="${config.height}">
   <rect width="100%" height="100%" fill="#ffffff"/>
   <g font-family="${escapeXml(config.fontFamily)}" font-size="${config.fontSize}" font-weight="${config.fontWeight}" text-anchor="middle" dominant-baseline="middle">
   ${texts}

@@ -140,6 +140,14 @@ p {
   background: #ffffff;
 }
 
+.aspect-toggle {
+  grid-template-columns: repeat(6, 1fr);
+}
+
+.aspect-toggle .mode-option span {
+  font-size: 12px;
+}
+
 .mode-option {
   position: relative;
   min-width: 0;

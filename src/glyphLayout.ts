@@ -106,27 +106,37 @@ export function layoutDenseGlyphFieldFromLines(
   const glyphStep = getGlyphStep(config)
   const charsPerRow = Math.ceil(box.width / glyphStep) + 8
   const random = createSeededRandom(`${config.seed}:field-offsets`)
+  const widthMap = measureGlyphWidthMap(config)
   const glyphs: GlyphInstance[] = []
 
   for (let row = 0; row < rowCount; row++) {
     const line = lines[row % Math.max(1, lines.length)]
     const chars = splitGlyphs(line ?? fallbackText).filter(char => char.trim().length > 0)
-    const xOffset = (random.next() - 0.5) * glyphStep * 1.7
+    const xOffset = (random.next() - 0.5) * glyphStep * 0.35
     const y = box.y + row * lineHeight + config.fontSize
+    let x = box.x + xOffset
+    let previousWidth = 0
 
     for (let column = 0; column < charsPerRow; column++) {
+      const char = chars[column % Math.max(1, chars.length)] ?? '*'
+      const width = widthMap.get(char) ?? glyphStep
+      x += column === 0 ? width / 2 : previousWidth / 2 + width / 2 + config.glyphSpacing
+      if (x > box.x + box.width + glyphStep * 4) break
+
       glyphs.push({
         id: `field-${row}-${column}`,
         pathId: 'field',
         index: row * charsPerRow + column,
-        char: chars[column % Math.max(1, chars.length)] ?? '*',
-        baseChar: chars[column % Math.max(1, chars.length)] ?? '*',
-        x: box.x + column * glyphStep + xOffset,
+        char,
+        baseChar: char,
+        x,
         y,
         angle: 0,
         color: config.baseColor,
         opacity: 1,
       })
+
+      previousWidth = width
     }
   }
 
@@ -171,9 +181,38 @@ export function fontShorthand(config: AvatarConfig): string {
 }
 
 export function getGlyphStep(config: AvatarConfig): number {
-  const naturalAdvance = config.fontSize * 0.62
+  const naturalAdvance = measureAverageGlyphAdvance(config)
   const minimumAdvance = Math.max(0.1, config.fontSize * 0.18)
   return Math.max(minimumAdvance, naturalAdvance + config.glyphSpacing)
+}
+
+export function measureAverageGlyphAdvance(config: AvatarConfig): number {
+  const widths = [...measureGlyphWidthMap(config).values()]
+  if (widths.length === 0) return config.fontSize * 0.82
+  return widths.reduce((sum, width) => sum + width, 0) / widths.length
+}
+
+export function measureGlyphWidthMap(config: AvatarConfig): Map<string, number> {
+  const glyphs = splitGlyphs(SYMBOL_ALPHABET).filter(glyph => glyph.trim().length > 0)
+  const context = getMeasureContext()
+  if (!context || glyphs.length === 0) {
+    return new Map(glyphs.map(glyph => [glyph, config.fontSize * 0.82]))
+  }
+
+  context.font = fontShorthand(config)
+  return new Map(glyphs.map(glyph => [glyph, context.measureText(glyph).width]))
+}
+
+function getMeasureContext(): CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null {
+  if (typeof OffscreenCanvas !== 'undefined') {
+    return new OffscreenCanvas(1, 1).getContext('2d')
+  }
+
+  if (typeof document !== 'undefined') {
+    return document.createElement('canvas').getContext('2d')
+  }
+
+  return null
 }
 
 function quoteFontFamily(fontFamily: string): string {

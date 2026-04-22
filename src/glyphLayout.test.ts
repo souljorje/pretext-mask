@@ -13,7 +13,8 @@ describe('glyph chunking', () => {
     const config: AvatarConfig = {
       seed: 'dense',
       renderMode: 'inside',
-      size: 100,
+      width: 100,
+      height: 100,
       fontFamily: 'Georgia',
       fontSize: 12,
       fontWeight: 700,
@@ -35,7 +36,8 @@ describe('glyph chunking', () => {
     const config: AvatarConfig = {
       seed: 'glitch',
       renderMode: 'inside',
-      size: 100,
+      width: 100,
+      height: 100,
       fontFamily: 'Georgia',
       fontSize: 12,
       fontWeight: 700,
@@ -70,7 +72,8 @@ describe('glyph chunking', () => {
     const baseConfig: AvatarConfig = {
       seed: 'spacing',
       renderMode: 'outline',
-      size: 100,
+      width: 100,
+      height: 100,
       fontFamily: 'Georgia',
       fontSize: 20,
       fontWeight: 700,
@@ -85,5 +88,30 @@ describe('glyph chunking', () => {
 
     expect(getGlyphStep({ ...baseConfig, glyphSpacing: 8 })).toBeGreaterThan(getGlyphStep(baseConfig))
     expect(getGlyphStep({ ...baseConfig, glyphSpacing: -6 })).toBeLessThan(getGlyphStep(baseConfig))
+  })
+
+  it('places dense glyphs with nondecreasing measured spacing at zero', () => {
+    const config: AvatarConfig = {
+      seed: 'spacing',
+      renderMode: 'inside',
+      width: 100,
+      height: 100,
+      fontFamily: 'Georgia',
+      fontSize: 20,
+      fontWeight: 700,
+      glyphSpacing: 0,
+      letterSpacing: 0,
+      lineHeight: 24,
+      glitchRate: 0,
+      hoverRadius: 40,
+      baseColor: '#111111',
+      accentColor: '#777777',
+    }
+    const glyphs = layoutDenseGlyphFieldFromLines('0 0 240 60', config, ['mmmmmmmmmmmm'], 'mmmmmmmmmmmm')
+    const row = glyphs.filter(glyph => glyph.id.startsWith('field-0-'))
+
+    for (let i = 1; i < row.length; i++) {
+      expect(row[i].x).toBeGreaterThan(row[i - 1].x)
+    }
   })
 })

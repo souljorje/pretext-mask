@@ -3,7 +3,8 @@ import type { AvatarConfig } from './types'
 export function createRenderConfig(viewBox: string, config: AvatarConfig): AvatarConfig {
   const box = parseViewBox(viewBox)
   const longestSide = Math.max(box.width, box.height)
-  const unitsPerPixel = longestSide / config.size
+  const longestOutputSide = Math.max(config.width, config.height)
+  const unitsPerPixel = longestSide / longestOutputSide
 
   return {
     ...config,
