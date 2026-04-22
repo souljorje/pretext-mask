@@ -1,83 +1,14 @@
-import {
-  layoutWithLines,
-  layoutNextLineRange,
-  materializeLineRange,
-  prepareWithSegments,
-  type LayoutCursor,
-  type PreparedTextWithSegments,
-} from '@chenglou/pretext'
-import type { ExtractedPath, GlyphInstance, MaskConfig } from './types'
+import { layoutWithLines, prepareWithSegments } from '@chenglou/pretext'
+import type { GlyphInstance, MaskConfig } from './types'
 import { createSeededRandom, makeGlyphStream, splitGlyphs } from './random'
 import { parseViewBox } from './scale'
 
 export const SYMBOL_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789._:-=+*/\\|#@$%&<>[]{}'
+export const SYMBOL_GLYPHS = splitGlyphs(SYMBOL_ALPHABET).filter(glyph => glyph.trim().length > 0)
 
-export type PathSampler = {
-  id: string
-  length: number
-  pointAt(distance: number): { x: number; y: number }
-}
-
-export type GlyphTextSource = {
-  prepared: PreparedTextWithSegments
-  cursor: LayoutCursor
-}
-
-export function createGlyphTextSource(config: MaskConfig, pathCount: number): GlyphTextSource {
-  const streamLength = Math.max(2000, pathCount * 900)
-  const stream = makeGlyphStream(`${config.seed}:glyphs`, SYMBOL_ALPHABET, streamLength)
-  const prepared = prepareWithSegments(stream, fontShorthand(config), {
-    whiteSpace: 'pre-wrap',
-    letterSpacing: config.letterSpacing,
-  })
-
-  return {
-    prepared,
-    cursor: { segmentIndex: 0, graphemeIndex: 0 },
-  }
-}
-
-export function layoutGlyphsOnSamplers(
-  paths: ExtractedPath[],
-  samplers: PathSampler[],
-  config: MaskConfig,
-): GlyphInstance[] {
-  const source = createGlyphTextSource(config, paths.length)
-  const glyphs: GlyphInstance[] = []
-  const glyphStep = getGlyphStep(config)
-
-  for (const sampler of samplers) {
-    const line = layoutNextLineRange(source.prepared, source.cursor, sampler.length)
-    if (!line) break
-
-    const materialized = materializeLineRange(source.prepared, line)
-    const chars = splitGlyphs(materialized.text)
-    const count = Math.max(0, Math.floor(sampler.length / glyphStep))
-    const usableChars = chars.slice(0, count)
-
-    for (let i = 0; i < usableChars.length; i++) {
-      const distance = Math.min(sampler.length, (i + 0.5) * glyphStep)
-      const point = sampler.pointAt(distance)
-
-      glyphs.push({
-        id: `${sampler.id}-${i}`,
-        pathId: sampler.id,
-        index: i,
-        char: usableChars[i],
-        baseChar: usableChars[i],
-        x: point.x,
-        y: point.y,
-        angle: 0,
-        color: config.baseColor,
-        opacity: 1,
-      })
-    }
-
-    source.cursor = line.end
-  }
-
-  return glyphs
-}
+const widthMapCache = new Map<string, Map<string, number>>()
+const averageAdvanceCache = new Map<string, number>()
+let measureContext: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null | undefined
 
 export function layoutDenseGlyphField(parsedViewBox: string, config: MaskConfig): GlyphInstance[] {
   const box = parseViewBox(parsedViewBox)
@@ -89,7 +20,6 @@ export function layoutDenseGlyphField(parsedViewBox: string, config: MaskConfig)
   const stream = makeGlyphStream(`${config.seed}:field`, SYMBOL_ALPHABET, rowCount * charsPerRow * 2)
   const prepared = prepareWithSegments(stream, fontShorthand(config), {
     whiteSpace: 'pre-wrap',
-    letterSpacing: config.letterSpacing,
   })
   const lines = layoutWithLines(prepared, box.width + glyphStep * 6, lineHeight).lines
   return layoutDenseGlyphFieldFromLines(parsedViewBox, config, lines.map(line => line.text), stream)
@@ -109,11 +39,15 @@ export function layoutDenseGlyphFieldFromLines(
   const charsPerRow = Math.ceil(box.width / glyphStep) + 8
   const random = createSeededRandom(`${config.seed}:field-offsets`)
   const widthMap = measureGlyphWidthMap(config)
+  const fallbackChars = splitGlyphs(fallbackText).filter(char => char.trim().length > 0)
+  const rowChars = (lines.length > 0 ? lines : [fallbackText]).map(line => {
+    const chars = splitGlyphs(line).filter(char => char.trim().length > 0)
+    return chars.length > 0 ? chars : fallbackChars.length > 0 ? fallbackChars : SYMBOL_GLYPHS
+  })
   const glyphs: GlyphInstance[] = []
 
   for (let row = 0; row < rowCount; row++) {
-    const line = lines[row % Math.max(1, lines.length)]
-    const chars = splitGlyphs(line ?? fallbackText).filter(char => char.trim().length > 0)
+    const chars = rowChars[row % rowChars.length]
     const xOffset = (random.next() - 0.5) * glyphStep * 0.35
     const y = rowBounds.count === 1 ? rowBounds.top : rowBounds.top + row * rowBounds.step
     let x = box.x + xOffset
@@ -129,15 +63,10 @@ export function layoutDenseGlyphFieldFromLines(
 
       glyphs.push({
         id: `field-${row}-${column}`,
-        pathId: 'field',
         index: row * charsPerRow + column,
         char,
-        baseChar: char,
         x,
         y,
-        angle: 0,
-        color: config.baseColor,
-        opacity: 1,
       })
 
       previousWidth = width
@@ -147,41 +76,31 @@ export function layoutDenseGlyphFieldFromLines(
   return glyphs
 }
 
-export function chunkGlyphsByMeasuredBudget(
-  glyphs: readonly string[],
-  maxAdvance: number,
-  measure: (glyph: string) => number,
-): string[] {
-  const output: string[] = []
-  let advance = 0
-
-  for (const glyph of glyphs) {
-    const nextAdvance = measure(glyph)
-    if (advance + nextAdvance > maxAdvance) break
-    output.push(glyph)
-    advance += nextAdvance
-  }
-
-  return output
-}
-
 export function glitchGlyphs(glyphs: GlyphInstance[], config: MaskConfig, timeMs: number): GlyphInstance[] {
-  const alphabet = splitGlyphs(SYMBOL_ALPHABET).filter(glyph => glyph.trim().length > 0)
-  if (alphabet.length === 0 || config.glitchRate <= 0) return glyphs
-
-  const bucket = Math.floor(timeMs / Math.max(40, 1000 / config.glitchRate))
+  const bucket = getGlitchBucket(config, timeMs)
+  if (bucket === null) return glyphs
 
   return glyphs.map(glyph => {
-    const random = createSeededRandom(`${config.seed}:glitch:${bucket}:${glyph.id}`)
     return {
       ...glyph,
-      char: random.pick(alphabet),
+      char: getGlitchedGlyphChar(glyph, config, bucket),
     }
   })
 }
 
 export function fontShorthand(config: MaskConfig): string {
   return `${config.fontWeight} ${config.fontSize}px ${quoteFontFamily(config.fontFamily)}`
+}
+
+export function getGlitchBucket(config: MaskConfig, timeMs: number): number | null {
+  if (SYMBOL_GLYPHS.length === 0 || config.glitchRate <= 0) return null
+  return Math.floor(timeMs / Math.max(40, 1000 / config.glitchRate))
+}
+
+export function getGlitchedGlyphChar(glyph: GlyphInstance, config: MaskConfig, bucket: number | null): string {
+  if (bucket === null) return glyph.char
+  const random = createSeededRandom(`${config.seed}:glitch:${bucket}:${glyph.id}`)
+  return random.pick(SYMBOL_GLYPHS)
 }
 
 export function getGlyphStep(config: MaskConfig): number {
@@ -191,21 +110,32 @@ export function getGlyphStep(config: MaskConfig): number {
 }
 
 export function measureAverageGlyphAdvance(config: MaskConfig): number {
+  const key = measureCacheKey(config)
+  const cached = averageAdvanceCache.get(key)
+  if (cached !== undefined) return cached
+
   const widths = [...measureGlyphWidthMap(config).values()]
   if (widths.length === 0) return config.fontSize * 0.82
-  return widths.reduce((sum, width) => sum + width, 0) / widths.length
+  const average = widths.reduce((sum, width) => sum + width, 0) / widths.length
+  averageAdvanceCache.set(key, average)
+  return average
 }
 
 export function measureGlyphWidthMap(config: MaskConfig): Map<string, number> {
-  const glyphs = splitGlyphs(SYMBOL_ALPHABET).filter(glyph => glyph.trim().length > 0)
+  const key = measureCacheKey(config)
+  const cached = widthMapCache.get(key)
+  if (cached) return cached
+
   const context = getMeasureContext()
-  if (!context || glyphs.length === 0) {
-    return new Map(glyphs.map(glyph => [glyph, config.fontSize * 0.82]))
+  if (!context || SYMBOL_GLYPHS.length === 0) {
+    const fallback = new Map(SYMBOL_GLYPHS.map(glyph => [glyph, config.fontSize * 0.82]))
+    widthMapCache.set(key, fallback)
+    return fallback
   }
 
   context.font = fontShorthand(config)
-  return new Map(
-    glyphs.map(glyph => {
+  const widths = new Map(
+    SYMBOL_GLYPHS.map(glyph => {
       const metrics = context.measureText(glyph)
       const boundingWidth =
         metrics.actualBoundingBoxLeft && metrics.actualBoundingBoxRight
@@ -214,18 +144,9 @@ export function measureGlyphWidthMap(config: MaskConfig): Map<string, number> {
       return [glyph, Math.max(metrics.width, boundingWidth, config.fontSize * 0.82)]
     }),
   )
-}
 
-export function measureVerticalMetrics(config: MaskConfig): { ascent: number; descent: number } {
-  const context = getMeasureContext()
-  if (!context) return { ascent: config.fontSize * 0.8, descent: config.fontSize * 0.2 }
-
-  context.font = fontShorthand(config)
-  const metrics = context.measureText(SYMBOL_ALPHABET)
-  return {
-    ascent: metrics.actualBoundingBoxAscent || config.fontSize * 0.8,
-    descent: metrics.actualBoundingBoxDescent || config.fontSize * 0.2,
-  }
+  widthMapCache.set(key, widths)
+  return widths
 }
 
 function getRowBounds(
@@ -242,18 +163,27 @@ function getRowBounds(
 }
 
 function getMeasureContext(): CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null {
+  if (measureContext !== undefined) return measureContext
+
   if (typeof OffscreenCanvas !== 'undefined') {
-    return new OffscreenCanvas(1, 1).getContext('2d')
+    measureContext = new OffscreenCanvas(1, 1).getContext('2d')
+    return measureContext
   }
 
   if (typeof document !== 'undefined') {
-    return document.createElement('canvas').getContext('2d')
+    measureContext = document.createElement('canvas').getContext('2d')
+    return measureContext
   }
 
+  measureContext = null
   return null
 }
 
-function quoteFontFamily(fontFamily: string): string {
+function measureCacheKey(config: MaskConfig): string {
+  return `${config.fontWeight}|${config.fontSize}|${config.fontFamily}`
+}
+
+export function quoteFontFamily(fontFamily: string): string {
   const trimmed = fontFamily.trim() || 'Georgia'
   if (/^["'].*["']$/.test(trimmed)) return trimmed
   if (/^[a-z-]+$/i.test(trimmed)) return trimmed

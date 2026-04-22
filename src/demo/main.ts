@@ -1,22 +1,41 @@
 import './styles.css'
-import type { GlyphInstance, MaskConfig, ParsedSvg } from './types'
-import { extractPathsFromSvgText } from './svgExtract'
-import { glitchGlyphs, layoutDenseGlyphField } from './glyphLayout'
-import { makeFallbackSvg } from './svgSampler'
-import { createRenderConfig, parseViewBox } from './scale'
-import { filterGlyphsByShape, filterGlyphsNearOutline } from './shapeHitTest'
+import type { GlyphInstance, MaskConfig, ParsedSvg, ShapeHitTester } from '../lib'
+import {
+  createRenderConfig,
+  createShapeHitTester,
+  extractPathsFromSvgText,
+  getGlitchBucket,
+  getGlitchedGlyphChar,
+  layoutDenseGlyphField,
+  makeFallbackSvg,
+  parseViewBox,
+  quoteFontFamily,
+} from '../lib'
 
 type AspectPreset = 'custom' | '1:1' | '4:3' | '3:4' | '16:9' | '9:16'
+type Point = { x: number; y: number }
+type CanvasState = {
+  pixelRatio: number
+  pixelWidth: number
+  pixelHeight: number
+  width: number
+  height: number
+}
 
 type MaskItem = {
   id: number
   seed: string
   svgText: string
+  svgVersion: number
   parsed: ParsedSvg
+  hitTester: ShapeHitTester
   baseGlyphs: GlyphInstance[]
-  displayGlyphs: GlyphInstance[]
-  pointer: { x: number; y: number } | null
+  pointer: Point | null
+  canvas: HTMLCanvasElement | null
+  canvasState: CanvasState | null
   lastLayoutKey: string
+  lastGlitchBucket: number | null
+  dirty: boolean
 }
 
 const config: MaskConfig = {
@@ -28,7 +47,6 @@ const config: MaskConfig = {
   fontSize: 18,
   fontWeight: 700,
   glyphSpacing: 0,
-  letterSpacing: 0,
   lineHeight: 24,
   padding: 0,
   glitchRate: 8,
@@ -37,13 +55,24 @@ const config: MaskConfig = {
   accentColor: '#16a34a',
 }
 
+const layoutKeys = new Set<keyof MaskConfig>([
+  'width',
+  'height',
+  'fontFamily',
+  'fontSize',
+  'fontWeight',
+  'glyphSpacing',
+  'lineHeight',
+  'padding',
+])
+
 let nextMaskId = 1
 let masks: MaskItem[] = [createMaskItem(makeFallbackSvg())]
 let aspectPreset: AspectPreset = '1:1'
 
 const app = document.querySelector<HTMLDivElement>('#app')
 if (!app) throw new Error('Missing #app root.')
-// ${numberInput('padding', 'Padding', config.padding, 0, 240, 1)}
+
 app.innerHTML = `
   <main class="shell">
     <section class="control-panel" aria-label="Mask controls">
@@ -64,6 +93,7 @@ app.innerHTML = `
         ${numberInput('fontWeight', 'Font weight', config.fontWeight, 100, 900, 100)}
         ${numberInput('glyphSpacing', 'Letter spacing', config.glyphSpacing, -40, 80, 0.5)}
         ${numberInput('lineHeight', 'Line height', config.lineHeight, 4, 120, 1)}
+        ${numberInput('padding', 'Padding', config.padding, -240, 240, 1)}
         ${numberInput('hoverRadius', 'Hover radius', config.hoverRadius, 10, 240, 1)}
         ${modeControl(config.renderMode)}
         ${colorInput('baseColor', 'Base', config.baseColor)}
@@ -91,18 +121,25 @@ bindControls()
 renderGallery()
 relayoutAll(true)
 requestAnimationFrame(animate)
+window.addEventListener('beforeunload', () => masks.forEach(mask => mask.hitTester.dispose()))
 
 function createMaskItem(svgText: string): MaskItem {
   const id = nextMaskId++
+  const parsed = extractPathsFromSvgText(svgText)
   return {
     id,
     seed: `pretext-${id}`,
     svgText,
-    parsed: extractPathsFromSvgText(svgText),
+    svgVersion: 0,
+    parsed,
+    hitTester: createShapeHitTester(parsed),
     baseGlyphs: [],
-    displayGlyphs: [],
     pointer: null,
+    canvas: null,
+    canvasState: null,
     lastLayoutKey: '',
+    lastGlitchBucket: null,
+    dirty: true,
   }
 }
 
@@ -123,7 +160,12 @@ function bindControls() {
       } else {
         config[key] = input.value as never
       }
-      relayoutAll()
+
+      if (layoutKeys.has(key)) {
+        relayoutAll()
+      } else {
+        markAllDirty()
+      }
     })
   }
 
@@ -175,11 +217,14 @@ function renderGallery() {
     const exportButton = card.querySelector<HTMLButtonElement>('button[data-action="export"]')
     const removeButton = card.querySelector<HTMLButtonElement>('button[data-action="remove"]')
 
+    mask.canvas = canvas
+    mask.canvasState = null
+
     canvas?.addEventListener('pointermove', event => {
-      mask.pointer = clientPointToCanvasViewBox(mask, canvas, event.clientX, event.clientY)
+      setPointer(mask, clientPointToCanvasViewBox(mask, canvas, event.clientX, event.clientY))
     })
     canvas?.addEventListener('pointerleave', () => {
-      mask.pointer = null
+      setPointer(mask, null)
     })
 
     upload?.addEventListener('change', async event => {
@@ -188,8 +233,13 @@ function renderGallery() {
       if (!file) return
 
       try {
-        mask.svgText = await file.text()
-        mask.parsed = extractPathsFromSvgText(mask.svgText)
+        const svgText = await file.text()
+        const parsed = extractPathsFromSvgText(svgText)
+        mask.hitTester.dispose()
+        mask.svgText = svgText
+        mask.svgVersion += 1
+        mask.parsed = parsed
+        mask.hitTester = createShapeHitTester(parsed)
         mask.lastLayoutKey = ''
         relayoutItem(mask, true)
       } catch (error) {
@@ -204,6 +254,7 @@ function renderGallery() {
     })
 
     removeButton?.addEventListener('click', () => {
+      mask.hitTester.dispose()
       masks = masks.filter(item => item.id !== mask.id)
       renderGallery()
       relayoutAll(true)
@@ -222,14 +273,13 @@ function relayoutAll(force = false) {
 
 function relayoutItem(mask: MaskItem, force = false) {
   const layoutKey = JSON.stringify({
-    svgText: mask.svgText,
+    svgVersion: mask.svgVersion,
     seed: mask.seed,
     renderMode: config.renderMode,
     fontFamily: config.fontFamily,
     fontSize: config.fontSize,
     fontWeight: config.fontWeight,
     glyphSpacing: config.glyphSpacing,
-    letterSpacing: config.letterSpacing,
     lineHeight: config.lineHeight,
     padding: config.padding,
     width: config.width,
@@ -238,82 +288,114 @@ function relayoutItem(mask: MaskItem, force = false) {
   if (!force && layoutKey === mask.lastLayoutKey) return
   mask.lastLayoutKey = layoutKey
 
-  mask.parsed = extractPathsFromSvgText(mask.svgText)
-  const itemConfig = getMaskConfig(mask)
-  const renderConfig = createRenderConfig(mask.parsed.viewBox, itemConfig)
+  const renderConfig = createRenderConfig(mask.parsed.viewBox, getMaskConfig(mask))
   const denseGlyphs = layoutDenseGlyphField(mask.parsed.viewBox, renderConfig)
 
   if (config.renderMode === 'outline') {
     const outlineWidth = Math.max(renderConfig.fontSize * 1.45, renderConfig.lineHeight * 0.72)
-    mask.baseGlyphs = filterGlyphsNearOutline(mask.parsed, denseGlyphs, outlineWidth)
+    mask.baseGlyphs = mask.hitTester.filterNearOutline(denseGlyphs, outlineWidth)
   } else {
-    mask.baseGlyphs = filterGlyphsByShape(mask.parsed, denseGlyphs, config.renderMode, renderConfig.fontSize * 0.75)
+    mask.baseGlyphs = mask.hitTester.filterByShape(denseGlyphs, config.renderMode, renderConfig.fontSize * 0.75)
   }
 
-  mask.displayGlyphs = mask.baseGlyphs
-  drawMask(mask, mask.displayGlyphs)
+  markDirty(mask)
 }
 
 function animate(timeMs: number) {
   for (const mask of masks) {
-    const itemConfig = getMaskConfig(mask)
-    const glitched = glitchGlyphs(mask.baseGlyphs, createRenderConfig(mask.parsed.viewBox, itemConfig), timeMs)
-    mask.displayGlyphs = applyPointerColors(mask, glitched)
-    drawMask(mask, mask.displayGlyphs)
+    const bucket = getGlitchBucket(getMaskConfig(mask), timeMs)
+    if (bucket !== mask.lastGlitchBucket) {
+      mask.lastGlitchBucket = bucket
+      if (bucket !== null) markDirty(mask)
+    }
+
+    if (!mask.dirty) continue
+    drawMask(mask, bucket)
+    mask.dirty = false
   }
+
   requestAnimationFrame(animate)
 }
 
-function drawMask(mask: MaskItem, glyphs: readonly GlyphInstance[]) {
-  const canvas = getMaskCanvas(mask)
+function drawMask(mask: MaskItem, glitchBucket: number | null) {
+  const canvas = mask.canvas
   if (!canvas) return
 
-  const pixelRatio = window.devicePixelRatio || 1
-  const width = Math.max(1, config.width)
-  const height = Math.max(1, config.height)
-  canvas.width = Math.round(width * pixelRatio)
-  canvas.height = Math.round(height * pixelRatio)
-  canvas.style.maxWidth = `${width}px`
-  canvas.style.aspectRatio = `${width} / ${height}`
-
-  const context = canvas.getContext('2d')
+  const context = prepareCanvas(mask, canvas)
   if (!context) return
 
-  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
+  const width = Math.max(1, config.width)
+  const height = Math.max(1, config.height)
   context.clearRect(0, 0, width, height)
   context.fillStyle = '#ffffff'
   context.fillRect(0, 0, width, height)
 
-  const itemConfig = getMaskConfig(mask)
-  const renderConfig = createRenderConfig(mask.parsed.viewBox, itemConfig)
+  const renderConfig = createRenderConfig(mask.parsed.viewBox, getMaskConfig(mask))
   const transform = createViewBoxTransform(mask.parsed.viewBox, width, height)
-  context.font = `${renderConfig.fontWeight} ${transform.scaleY(renderConfig.fontSize)}px ${renderConfig.fontFamily}`
+  const fontSize = transform.scaleY(renderConfig.fontSize)
+  context.font = `${renderConfig.fontWeight} ${fontSize}px ${quoteFontFamily(renderConfig.fontFamily)}`
   context.textAlign = 'center'
   context.textBaseline = 'middle'
 
-  for (const glyph of glyphs) {
-    context.globalAlpha = glyph.opacity
-    context.fillStyle = glyph.color
-    context.fillText(glyph.char, transform.x(glyph.x), transform.y(glyph.y))
+  const pointer = mask.pointer
+  const baseRgb = hexToRgb(config.baseColor)
+  const accentRgb = hexToRgb(config.accentColor)
+
+  if (!pointer) {
+    context.fillStyle = config.baseColor
+    for (const glyph of mask.baseGlyphs) {
+      context.fillText(getGlitchedGlyphChar(glyph, renderConfig, glitchBucket), transform.x(glyph.x), transform.y(glyph.y))
+    }
+    return
   }
-  context.globalAlpha = 1
+
+  for (const glyph of mask.baseGlyphs) {
+    const distance = Math.hypot(glyph.x - pointer.x, glyph.y - pointer.y)
+    context.fillStyle =
+      distance > renderConfig.hoverRadius
+        ? config.baseColor
+        : mixRgb(accentRgb, baseRgb, distance / renderConfig.hoverRadius)
+    context.fillText(getGlitchedGlyphChar(glyph, renderConfig, glitchBucket), transform.x(glyph.x), transform.y(glyph.y))
+  }
 }
 
-function applyPointerColors(mask: MaskItem, glyphs: readonly GlyphInstance[]): GlyphInstance[] {
-  const pointerPosition = mask.pointer
-  if (!pointerPosition) return glyphs.map(glyph => ({ ...glyph, color: config.baseColor }))
+function prepareCanvas(mask: MaskItem, canvas: HTMLCanvasElement): CanvasRenderingContext2D | null {
+  const pixelRatio = window.devicePixelRatio || 1
+  const width = Math.max(1, config.width)
+  const height = Math.max(1, config.height)
+  const pixelWidth = Math.round(width * pixelRatio)
+  const pixelHeight = Math.round(height * pixelRatio)
+  const nextState = { pixelRatio, pixelWidth, pixelHeight, width, height }
 
-  return glyphs.map(glyph => {
-    const renderConfig = createRenderConfig(mask.parsed.viewBox, getMaskConfig(mask))
-    const distance = Math.hypot(glyph.x - pointerPosition.x, glyph.y - pointerPosition.y)
-    if (distance > renderConfig.hoverRadius) return { ...glyph, color: config.baseColor }
-    return { ...glyph, color: mixHex(config.accentColor, config.baseColor, distance / renderConfig.hoverRadius) }
-  })
+  if (!sameCanvasState(mask.canvasState, nextState)) {
+    canvas.width = pixelWidth
+    canvas.height = pixelHeight
+    canvas.style.width = `min(100%, ${width}px)`
+    canvas.style.aspectRatio = `${width} / ${height}`
+    mask.canvasState = nextState
+  }
+
+  const context = canvas.getContext('2d')
+  if (!context) return null
+  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
+  return context
+}
+
+function sameCanvasState(left: CanvasState | null, right: CanvasState): boolean {
+  return (
+    !!left &&
+    left.pixelRatio === right.pixelRatio &&
+    left.pixelWidth === right.pixelWidth &&
+    left.pixelHeight === right.pixelHeight &&
+    left.width === right.width &&
+    left.height === right.height
+  )
 }
 
 function exportMask(mask: MaskItem) {
-  const canvas = getMaskCanvas(mask)
-  canvas?.toBlob(blob => {
+  drawMask(mask, getGlitchBucket(getMaskConfig(mask), performance.now()))
+  mask.dirty = false
+  mask.canvas?.toBlob(blob => {
     if (!blob) return
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
@@ -328,16 +410,27 @@ function getMaskConfig(mask: MaskItem): MaskConfig {
   return { ...config, seed: mask.seed }
 }
 
-function getMaskCanvas(mask: MaskItem): HTMLCanvasElement | null {
-  return galleryNode.querySelector<HTMLCanvasElement>(`.mask-card[data-id="${mask.id}"] canvas`)
+function setPointer(mask: MaskItem, pointer: Point | null) {
+  if (samePoint(mask.pointer, pointer)) return
+  mask.pointer = pointer
+  markDirty(mask)
 }
 
-function clientPointToCanvasViewBox(
-  mask: MaskItem,
-  canvas: HTMLCanvasElement,
-  clientX: number,
-  clientY: number,
-): { x: number; y: number } {
+function samePoint(left: Point | null, right: Point | null): boolean {
+  return left?.x === right?.x && left?.y === right?.y
+}
+
+function markDirty(mask: MaskItem) {
+  mask.dirty = true
+}
+
+function markAllDirty() {
+  for (const mask of masks) {
+    markDirty(mask)
+  }
+}
+
+function clientPointToCanvasViewBox(mask: MaskItem, canvas: HTMLCanvasElement, clientX: number, clientY: number): Point {
   const rect = canvas.getBoundingClientRect()
   const box = parseViewBox(mask.parsed.viewBox)
   const xRatio = (clientX - rect.left) / rect.width
@@ -363,11 +456,9 @@ function createViewBoxTransform(viewBox: string, width: number, height: number) 
   }
 }
 
-function mixHex(a: string, b: string, amount: number): string {
-  const left = hexToRgb(a)
-  const right = hexToRgb(b)
+function mixRgb(a: [number, number, number], b: [number, number, number], amount: number): string {
   const t = Math.max(0, Math.min(1, amount))
-  const channels = left.map((value, index) => Math.round(value * (1 - t) + right[index] * t))
+  const channels = a.map((value, index) => Math.round(value * (1 - t) + b[index] * t))
   return `rgb(${channels[0]}, ${channels[1]}, ${channels[2]})`
 }
 

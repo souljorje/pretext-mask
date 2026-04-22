@@ -256,7 +256,7 @@ p {
 }
 
 .preview {
-  width: minmax(50vw, 512px);
+  width: min(100%, 512px);
   height: auto;
   border: 1px solid var(--border-muted);
   background: #ffffff;

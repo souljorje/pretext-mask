@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Project: Pretext Mask. Vite + TypeScript browser app that generates seeded glyph masks from SVG shapes.
+Project: Pretext Mask. Vite + TypeScript core library plus browser demo for seeded glyph masks from SVG shapes.
 
 ## Commands
 
@@ -13,14 +13,16 @@ Run tests/build before final handoff after code changes.
 
 ## Architecture
 
-- `src/main.ts`: shared settings UI, multi-box gallery state, canvas render loop, per-box PNG export.
-- `src/glyphLayout.ts`: seeded glyph stream, Pretext measurement/layout, row placement, glitch remapping.
-- `src/svgExtract.ts`: parses uploaded SVG and normalizes visible geometry to path data.
-- `src/shapeHitTest.ts`: SVG-based hit testing for `outline`, `inside`, `outside`.
-- `src/scale.ts`: converts pixel-facing controls into SVG viewBox units.
-- `src/svgSampler.ts`: default fallback SVG and legacy path sampler helpers.
-- `src/random.ts`: deterministic seeded PRNG and glyph stream helpers.
-- `src/types.ts`: shared config/data types.
+- `src/lib/`: reusable core parsing, layout, scaling, hit-testing, seeded randomness, fallback SVG, and exported types.
+- `src/lib/index.ts`: public library barrel.
+- `src/demo/main.ts`: shared settings UI, multi-box gallery state, canvas render loop, per-box PNG export.
+- `src/demo/styles.css`: demo-only styling.
+- `src/lib/glyphLayout.ts`: seeded glyph stream, Pretext measurement/layout, row placement, glitch remapping.
+- `src/lib/svgExtract.ts`: parses uploaded SVG and normalizes visible geometry to path data.
+- `src/lib/shapeHitTest.ts`: reusable SVG-based hit tester for `outline`, `inside`, `outside`.
+- `src/lib/scale.ts`: converts pixel-facing controls into SVG viewBox units.
+- `src/lib/random.ts`: deterministic seeded PRNG and glyph stream helpers.
+- `src/lib/types.ts`: shared config/data types.
 
 Preview/export are canvas/PNG only. SVG is still used internally for parsing and path hit-testing.
 
@@ -61,6 +63,6 @@ Preview/export are canvas/PNG only. SVG is still used internally for parsing and
 
 - This project has evolved through visual tuning. Before changing row placement/filtering, inspect:
   - default GitHub SVG `viewBox="0 0 50 50"`
-  - canvas coordinate transform in `main.ts`
+  - canvas coordinate transform in `src/demo/main.ts`
   - glyph placement in `layoutDenseGlyphFieldFromLines`
-  - hit-test sampling in `filterGlyphsByShape`
+  - hit-test sampling in `createShapeHitTester`

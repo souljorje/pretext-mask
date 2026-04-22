@@ -10,7 +10,6 @@ export function createRenderConfig(viewBox: string, config: MaskConfig): MaskCon
     ...config,
     fontSize: config.fontSize * unitsPerPixel,
     glyphSpacing: config.glyphSpacing * unitsPerPixel,
-    letterSpacing: config.letterSpacing * unitsPerPixel,
     lineHeight: config.lineHeight * unitsPerPixel,
     padding: config.padding * unitsPerPixel,
     hoverRadius: config.hoverRadius * unitsPerPixel,

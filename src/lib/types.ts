@@ -9,7 +9,6 @@ export type MaskConfig = {
   fontSize: number
   fontWeight: number
   glyphSpacing: number
-  letterSpacing: number
   lineHeight: number
   padding: number
   glitchRate: number
@@ -27,15 +26,10 @@ export type ExtractedPath = {
 
 export type GlyphInstance = {
   id: string
-  pathId: string
   index: number
   char: string
-  baseChar: string
   x: number
   y: number
-  angle: number
-  color: string
-  opacity: number
 }
 
 export type SeededRandom = {

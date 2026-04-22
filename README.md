@@ -29,15 +29,21 @@ npm test
 npm run build
 ```
 
+## Structure
+
+- `src/lib`: reusable mask-generation core.
+- `src/demo`: Vite UI playground.
+- `src/lib/index.ts`: public library exports.
+
 ## How It Works
 
-The app parses visible SVG geometry into paths, generates deterministic glyph rows from a seed, then filters glyph positions against the shape:
+The library parses visible SVG geometry into paths, generates deterministic glyph rows from a seed, then filters glyph positions against the shape:
 
 - `Outline`: keeps glyphs near the SVG outline.
 - `Inside`: keeps glyphs overlapping the filled shape.
 - `Outside`: keeps glyphs outside the filled shape.
 
-Rendering happens on one canvas. SVG is used only for parsing and hit-testing.
+The demo renders to canvas. SVG is used only for parsing and path hit-testing.
 
 ## Controls
 

@@ -1,5 +1,8 @@
 import type { SeededRandom } from './types'
 
+const glyphSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+const glyphCache = new Map<string, string[]>()
+
 export function hashSeed(seed: string): number {
   let hash = 2166136261
   for (let i = 0; i < seed.length; i++) {
@@ -30,19 +33,23 @@ export function createSeededRandom(seed: string): SeededRandom {
 }
 
 export function splitGlyphs(value: string): string[] {
-  const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
-  return [...segmenter.segment(value)].map(segment => segment.segment)
+  const cached = glyphCache.get(value)
+  if (cached) return cached
+
+  const glyphs = [...glyphSegmenter.segment(value)].map(segment => segment.segment)
+  glyphCache.set(value, glyphs)
+  return glyphs
 }
 
 export function makeGlyphStream(seed: string, alphabet: string, length: number): string {
   const glyphs = splitGlyphs(alphabet).filter(glyph => glyph.trim().length > 0)
   const safeGlyphs = glyphs.length > 0 ? glyphs : ['*']
   const random = createSeededRandom(seed)
-  let output = ''
+  const output: string[] = []
 
   for (let i = 0; i < length; i++) {
-    output += random.pick(safeGlyphs)
+    output.push(random.pick(safeGlyphs))
   }
 
-  return output
+  return output.join('')
 }

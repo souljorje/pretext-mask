@@ -1,14 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { chunkGlyphsByMeasuredBudget, getGlyphStep, glitchGlyphs, layoutDenseGlyphFieldFromLines } from './glyphLayout'
+import { getGlyphStep, glitchGlyphs, layoutDenseGlyphFieldFromLines } from './glyphLayout'
 import type { MaskConfig } from './types'
 
-describe('glyph chunking', () => {
-  it('does not exceed measured budget', () => {
-    const chunk = chunkGlyphsByMeasuredBudget(['A', 'B', 'C', 'D'], 25, glyph => (glyph === 'C' ? 20 : 10))
-
-    expect(chunk).toEqual(['A', 'B'])
-  })
-
+describe('glyph layout', () => {
   it('generates deterministic dense fields', () => {
     const config: MaskConfig = {
       seed: 'dense',
@@ -19,7 +13,6 @@ describe('glyph chunking', () => {
       fontSize: 12,
       fontWeight: 700,
       glyphSpacing: 12,
-      letterSpacing: 0,
       lineHeight: 16,
       padding: 0,
       glitchRate: 0,
@@ -43,7 +36,6 @@ describe('glyph chunking', () => {
       fontSize: 12,
       fontWeight: 700,
       glyphSpacing: 12,
-      letterSpacing: 0,
       lineHeight: 16,
       padding: 0,
       glitchRate: 8,
@@ -54,15 +46,10 @@ describe('glyph chunking', () => {
     const glyphs = [
       {
         id: 'glyph-1',
-        pathId: 'field',
         index: 0,
         char: 'A',
-        baseChar: 'A',
         x: 0,
         y: 0,
-        angle: 0,
-        color: '#111111',
-        opacity: 1,
       },
     ]
 
@@ -80,7 +67,6 @@ describe('glyph chunking', () => {
       fontSize: 20,
       fontWeight: 700,
       glyphSpacing: 0,
-      letterSpacing: 0,
       lineHeight: 24,
       padding: 0,
       glitchRate: 0,
@@ -103,7 +89,6 @@ describe('glyph chunking', () => {
       fontSize: 20,
       fontWeight: 700,
       glyphSpacing: 0,
-      letterSpacing: 0,
       lineHeight: 24,
       padding: 0,
       glitchRate: 0,
@@ -129,7 +114,6 @@ describe('glyph chunking', () => {
       fontSize: 20,
       fontWeight: 700,
       glyphSpacing: 0,
-      letterSpacing: 0,
       lineHeight: 24,
       padding: 0,
       glitchRate: 0,
