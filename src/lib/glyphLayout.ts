@@ -13,7 +13,7 @@ let measureContext: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 export function layoutDenseGlyphField(parsedViewBox: string, config: MaskConfig): GlyphInstance[] {
   const box = parseViewBox(parsedViewBox)
   const lineHeight = Math.max(config.lineHeight, config.fontSize)
-  const rowBounds = getRowBounds(box, config, lineHeight)
+  const rowBounds = getRowBounds(box, lineHeight)
   const rowCount = rowBounds.count
   const glyphStep = getGlyphStep(config)
   const charsPerRow = Math.ceil(box.width / glyphStep) + 8
@@ -33,7 +33,7 @@ export function layoutDenseGlyphFieldFromLines(
 ): GlyphInstance[] {
   const box = parseViewBox(parsedViewBox)
   const lineHeight = Math.max(config.lineHeight, config.fontSize)
-  const rowBounds = getRowBounds(box, config, lineHeight)
+  const rowBounds = getRowBounds(box, lineHeight)
   const rowCount = rowBounds.count
   const glyphStep = getGlyphStep(config)
   const charsPerRow = Math.ceil(box.width / glyphStep) + 8
@@ -151,11 +151,10 @@ export function measureGlyphWidthMap(config: MaskConfig): Map<string, number> {
 
 function getRowBounds(
   box: { y: number; height: number },
-  config: MaskConfig,
   lineHeight: number,
 ): { top: number; step: number; count: number } {
-  const top = box.y + config.padding
-  const bottom = box.y + box.height - config.padding
+  const top = box.y
+  const bottom = box.y + box.height
   const span = Math.max(0, bottom - top)
   const count = Math.max(1, Math.floor(span / lineHeight) + 1)
   const step = count > 1 ? span / (count - 1) : lineHeight

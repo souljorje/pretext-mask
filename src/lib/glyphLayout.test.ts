@@ -104,7 +104,7 @@ describe('glyph layout', () => {
     }
   })
 
-  it('moves rows inward when padding increases', () => {
+  it('keeps glyph layout stable when padding changes', () => {
     const config: MaskConfig = {
       seed: 'padding',
       renderMode: 'inside',
@@ -124,6 +124,6 @@ describe('glyph layout', () => {
     const noPadding = layoutDenseGlyphFieldFromLines('0 0 240 120', config, ['mmmmmmmmmmmm'], 'mmmmmmmmmmmm')
     const padded = layoutDenseGlyphFieldFromLines('0 0 240 120', { ...config, padding: 20 }, ['mmmmmmmmmmmm'], 'mmmmmmmmmmmm')
 
-    expect(padded[0].y).toBeGreaterThan(noPadding[0].y)
+    expect(padded).toEqual(noPadding)
   })
 })
