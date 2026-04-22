@@ -4,7 +4,6 @@ Seeded glyph mask generator for SVG shapes. Upload an SVG, choose how glyphs rel
 
 ## Features
 
-- SVG upload with built-in GitHub icon fallback
 - Deterministic seed-based glyph generation
 - Canvas rendering for high glyph counts
 - PNG export
@@ -42,7 +41,6 @@ Rendering happens on one canvas. SVG is used only for parsing and hit-testing.
 
 ## Controls
 
-- `Seed`: deterministic glyph stream.
 - `Width` / `Height`: output PNG size.
 - `Aspect`: quick width/height presets.
 - `Font size` / `Weight`: glyph typography.
@@ -56,3 +54,5 @@ Rendering happens on one canvas. SVG is used only for parsing and hit-testing.
 ## Notes
 
 Output is PNG only. Same SVG, seed, and settings should produce the same static layout.
+
+Seed is internal per image box. The UI does not expose seed editing.

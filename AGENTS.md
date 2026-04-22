@@ -13,7 +13,7 @@ Run tests/build before final handoff after code changes.
 
 ## Architecture
 
-- `src/main.ts`: UI, state, canvas render loop, PNG export.
+- `src/main.ts`: shared settings UI, multi-box gallery state, canvas render loop, per-box PNG export.
 - `src/glyphLayout.ts`: seeded glyph stream, Pretext measurement/layout, row placement, glitch remapping.
 - `src/svgExtract.ts`: parses uploaded SVG and normalizes visible geometry to path data.
 - `src/shapeHitTest.ts`: SVG-based hit testing for `outline`, `inside`, `outside`.
@@ -27,6 +27,8 @@ Preview/export are canvas/PNG only. SVG is still used internally for parsing and
 ## Current Behavior
 
 - Default SVG: GitHub icon from Icons8-style SVG.
+- Users can add multiple image boxes; all boxes share the same settings.
+- Each box has its own SVG upload and PNG export controls in the preview area.
 - Render modes:
   - `outline`: horizontal glyph rows filtered near the SVG stroke.
   - `inside`: horizontal glyph rows kept when sampled glyph area overlaps filled shape.
@@ -36,13 +38,14 @@ Preview/export are canvas/PNG only. SVG is still used internally for parsing and
 - Hover color uses pointer distance in SVG viewBox coordinates.
 - `Letter spacing = 0` means natural measured glyph spacing; positive spreads; negative overlaps.
 - `Padding` controls row top/bottom bounds manually.
+- Seed is internal per box, not exposed in the UI.
 
 ## Implementation Notes
 
 - Keep repo style: vanilla TypeScript modules, no framework.
 - Prefer canvas drawing for preview. Avoid adding one DOM/SVG node per glyph.
 - Keep exported format PNG unless explicitly requested otherwise.
-- Preserve deterministic output for same seed/config/SVG.
+- Preserve deterministic output for same internal seed/config/SVG.
 - Control values are user-facing pixels. Use `createRenderConfig` before layout/hit radius math.
 - SVG upload should remain client-side only.
 - Hit-testing uses hidden SVG path APIs; do not replace with clipping masks unless requested.
@@ -51,6 +54,7 @@ Preview/export are canvas/PNG only. SVG is still used internally for parsing and
 
 - UI is intentionally minimal black/white/grey.
 - Sidebar is on the right on desktop, top on mobile.
+- SVG upload belongs in each preview card, not the sidebar.
 - Avoid decorative UI effects; keep controls dense and direct.
 
 ## Caution

@@ -3,14 +3,24 @@ import type { GlyphInstance, MaskConfig, ParsedSvg } from './types'
 import { extractPathsFromSvgText } from './svgExtract'
 import { glitchGlyphs, layoutDenseGlyphField } from './glyphLayout'
 import { makeFallbackSvg } from './svgSampler'
-import { createRenderConfig } from './scale'
-import { parseViewBox } from './scale'
+import { createRenderConfig, parseViewBox } from './scale'
 import { filterGlyphsByShape, filterGlyphsNearOutline } from './shapeHitTest'
 
 type AspectPreset = 'custom' | '1:1' | '4:3' | '3:4' | '16:9' | '9:16'
 
+type MaskItem = {
+  id: number
+  seed: string
+  svgText: string
+  parsed: ParsedSvg
+  baseGlyphs: GlyphInstance[]
+  displayGlyphs: GlyphInstance[]
+  pointer: { x: number; y: number } | null
+  lastLayoutKey: string
+}
+
 const config: MaskConfig = {
-  seed: 'pretext-001',
+  seed: 'pretext',
   renderMode: 'outline',
   width: 512,
   height: 512,
@@ -27,17 +37,13 @@ const config: MaskConfig = {
   accentColor: '#16a34a',
 }
 
-let svgText = makeFallbackSvg()
-let parsed: ParsedSvg = extractPathsFromSvgText(svgText)
-let baseGlyphs: GlyphInstance[] = []
-let displayGlyphs: GlyphInstance[] = []
-let pointer: { x: number; y: number } | null = null
-let lastLayoutKey = ''
+let nextMaskId = 1
+let masks: MaskItem[] = [createMaskItem(makeFallbackSvg())]
 let aspectPreset: AspectPreset = '1:1'
 
 const app = document.querySelector<HTMLDivElement>('#app')
 if (!app) throw new Error('Missing #app root.')
-
+// ${numberInput('padding', 'Padding', config.padding, 0, 240, 1)}
 app.innerHTML = `
   <main class="shell">
     <section class="control-panel" aria-label="Mask controls">
@@ -45,52 +51,60 @@ app.innerHTML = `
         <span class="brand-mark">P</span>
         <div>
           <h1>Pretext Mask</h1>
-          <p>Seeded glyph masks for SVGs</p>
+          <p>Glyph masks from SVG shapes</p>
         </div>
       </div>
 
-      <label class="file-picker">
-        <input id="svg-upload" type="file" accept=".svg,image/svg+xml" />
-        <span>Upload SVG</span>
-      </label>
-
       <div class="field-grid">
-        ${modeControl(config.renderMode)}
-        ${aspectControl(aspectPreset)}
-        ${textInput('seed', 'Seed', config.seed)}
         ${numberInput('width', 'Width', config.width, 128, 1600, 16)}
         ${numberInput('height', 'Height', config.height, 128, 1600, 16)}
+        ${aspectControl(aspectPreset)}
         ${textInput('fontFamily', 'Font', config.fontFamily)}
         ${numberInput('fontSize', 'Font size', config.fontSize, 8, 80, 1)}
-        ${numberInput('fontWeight', 'Weight', config.fontWeight, 100, 900, 100)}
+        ${numberInput('fontWeight', 'Font weight', config.fontWeight, 100, 900, 100)}
         ${numberInput('glyphSpacing', 'Letter spacing', config.glyphSpacing, -40, 80, 0.5)}
         ${numberInput('lineHeight', 'Line height', config.lineHeight, 4, 120, 1)}
-        ${numberInput('padding', 'Padding', config.padding, -120, 240, 1)}
-        ${sliderInput('glitchRate', 'Glitch rate', config.glitchRate, 0, 12, 1)}
         ${numberInput('hoverRadius', 'Hover radius', config.hoverRadius, 10, 240, 1)}
+        ${modeControl(config.renderMode)}
         ${colorInput('baseColor', 'Base', config.baseColor)}
         ${colorInput('accentColor', 'Accent', config.accentColor)}
+        ${sliderInput('glitchRate', 'Glitch rate', config.glitchRate, 0, 12, 1)}
       </div>
 
-      <button id="export-png" class="primary-action" type="button">Export PNG</button>
       <div id="status" class="status" role="status"></div>
     </section>
 
-    <section class="preview-wrap" aria-label="Mask preview">
-      <canvas id="preview" class="preview" role="img" aria-label="Generated glyph mask"></canvas>
+    <section class="preview-wrap" aria-label="Mask previews">
+      <div id="gallery" class="gallery"></div>
+      <button id="add-mask" class="add-mask" type="button">Add image box</button>
     </section>
   </main>
 `
 
-const preview = document.querySelector<HTMLCanvasElement>('#preview')
+const gallery = document.querySelector<HTMLDivElement>('#gallery')
 const status = document.querySelector<HTMLDivElement>('#status')
-if (!preview || !status) throw new Error('Missing UI nodes.')
-const previewCanvas = preview
+if (!gallery || !status) throw new Error('Missing UI nodes.')
+const galleryNode = gallery
 const statusNode = status
 
 bindControls()
-relayout()
+renderGallery()
+relayoutAll(true)
 requestAnimationFrame(animate)
+
+function createMaskItem(svgText: string): MaskItem {
+  const id = nextMaskId++
+  return {
+    id,
+    seed: `pretext-${id}`,
+    svgText,
+    parsed: extractPathsFromSvgText(svgText),
+    baseGlyphs: [],
+    displayGlyphs: [],
+    pointer: null,
+    lastLayoutKey: '',
+  }
+}
 
 function bindControls() {
   for (const key of Object.keys(config) as Array<keyof MaskConfig>) {
@@ -109,7 +123,7 @@ function bindControls() {
       } else {
         config[key] = input.value as never
       }
-      relayout()
+      relayoutAll()
     })
   }
 
@@ -117,7 +131,7 @@ function bindControls() {
     input.addEventListener('change', () => {
       if (!input.checked) return
       config.renderMode = input.value as MaskConfig['renderMode']
-      relayout()
+      relayoutAll()
     })
   }
 
@@ -126,49 +140,90 @@ function bindControls() {
       if (!input.checked) return
       aspectPreset = input.value as AspectPreset
       applyAspectPreset(aspectPreset)
-      relayout()
+      relayoutAll()
     })
   }
 
-  document.querySelector<HTMLInputElement>('#svg-upload')?.addEventListener('change', async event => {
-    const input = event.currentTarget as HTMLInputElement
-    const file = input.files?.[0]
-    if (!file) return
-
-    svgText = await file.text()
-    try {
-      parsed = extractPathsFromSvgText(svgText)
-      relayout(true)
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Could not parse SVG.')
-    }
-  })
-
-  document.querySelector<HTMLButtonElement>('#export-png')?.addEventListener('click', () => {
-    previewCanvas.toBlob(blob => {
-      if (!blob) return
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `pretext-mask-${config.seed || 'seed'}.png`
-      link.click()
-      URL.revokeObjectURL(url)
-    }, 'image/png')
-  })
-
-  previewCanvas.addEventListener('pointermove', event => {
-    const point = clientPointToCanvasViewBox(event.clientX, event.clientY)
-    pointer = point
-  })
-  previewCanvas.addEventListener('pointerleave', () => {
-    pointer = null
+  document.querySelector<HTMLButtonElement>('#add-mask')?.addEventListener('click', () => {
+    masks.push(createMaskItem(makeFallbackSvg()))
+    renderGallery()
+    relayoutAll(true)
   })
 }
 
-function relayout(force = false) {
+function renderGallery() {
+  galleryNode.replaceChildren()
+
+  for (const mask of masks) {
+    const card = document.createElement('article')
+    card.className = 'mask-card'
+    card.dataset.id = String(mask.id)
+    card.innerHTML = `
+      <canvas class="preview" role="img" aria-label="Generated glyph mask ${mask.id}"></canvas>
+      <div class="mask-actions">
+        <label class="card-action">
+          <input type="file" accept=".svg,image/svg+xml" data-action="upload" />
+          <span>Upload SVG</span>
+        </label>
+        <button class="card-action" type="button" data-action="export">Export PNG</button>
+        ${masks.length > 1 ? '<button class="card-action" type="button" data-action="remove">Remove</button>' : ''}
+      </div>
+    `
+
+    const canvas = card.querySelector<HTMLCanvasElement>('canvas')
+    const upload = card.querySelector<HTMLInputElement>('input[data-action="upload"]')
+    const exportButton = card.querySelector<HTMLButtonElement>('button[data-action="export"]')
+    const removeButton = card.querySelector<HTMLButtonElement>('button[data-action="remove"]')
+
+    canvas?.addEventListener('pointermove', event => {
+      mask.pointer = clientPointToCanvasViewBox(mask, canvas, event.clientX, event.clientY)
+    })
+    canvas?.addEventListener('pointerleave', () => {
+      mask.pointer = null
+    })
+
+    upload?.addEventListener('change', async event => {
+      const input = event.currentTarget as HTMLInputElement
+      const file = input.files?.[0]
+      if (!file) return
+
+      try {
+        mask.svgText = await file.text()
+        mask.parsed = extractPathsFromSvgText(mask.svgText)
+        mask.lastLayoutKey = ''
+        relayoutItem(mask, true)
+      } catch (error) {
+        setStatus(error instanceof Error ? error.message : 'Could not parse SVG.')
+      } finally {
+        input.value = ''
+      }
+    })
+
+    exportButton?.addEventListener('click', () => {
+      exportMask(mask)
+    })
+
+    removeButton?.addEventListener('click', () => {
+      masks = masks.filter(item => item.id !== mask.id)
+      renderGallery()
+      relayoutAll(true)
+    })
+
+    galleryNode.append(card)
+  }
+}
+
+function relayoutAll(force = false) {
+  for (const mask of masks) {
+    relayoutItem(mask, force)
+  }
+  setStatus(`${masks.length} ${masks.length === 1 ? 'box' : 'boxes'}`)
+}
+
+function relayoutItem(mask: MaskItem, force = false) {
   const layoutKey = JSON.stringify({
-    parsed,
-    seed: config.seed,
+    svgText: mask.svgText,
+    seed: mask.seed,
     renderMode: config.renderMode,
     fontFamily: config.fontFamily,
     fontSize: config.fontSize,
@@ -180,44 +235,48 @@ function relayout(force = false) {
     width: config.width,
     height: config.height,
   })
-  if (!force && layoutKey === lastLayoutKey) return
-  lastLayoutKey = layoutKey
+  if (!force && layoutKey === mask.lastLayoutKey) return
+  mask.lastLayoutKey = layoutKey
 
-  parsed = extractPathsFromSvgText(svgText)
-  const renderConfig = createRenderConfig(parsed.viewBox, config)
+  mask.parsed = extractPathsFromSvgText(mask.svgText)
+  const itemConfig = getMaskConfig(mask)
+  const renderConfig = createRenderConfig(mask.parsed.viewBox, itemConfig)
+  const denseGlyphs = layoutDenseGlyphField(mask.parsed.viewBox, renderConfig)
+
   if (config.renderMode === 'outline') {
     const outlineWidth = Math.max(renderConfig.fontSize * 1.45, renderConfig.lineHeight * 0.72)
-    baseGlyphs = filterGlyphsNearOutline(parsed, layoutDenseGlyphField(parsed.viewBox, renderConfig), outlineWidth)
+    mask.baseGlyphs = filterGlyphsNearOutline(mask.parsed, denseGlyphs, outlineWidth)
   } else {
-    baseGlyphs = filterGlyphsByShape(
-      parsed,
-      layoutDenseGlyphField(parsed.viewBox, renderConfig),
-      config.renderMode,
-      renderConfig.fontSize * 0.75,
-    )
+    mask.baseGlyphs = filterGlyphsByShape(mask.parsed, denseGlyphs, config.renderMode, renderConfig.fontSize * 0.75)
   }
-  displayGlyphs = baseGlyphs
-  draw(displayGlyphs)
-  setStatus(`${config.renderMode}, ${parsed.paths.length} paths, ${baseGlyphs.length} glyphs`)
+
+  mask.displayGlyphs = mask.baseGlyphs
+  drawMask(mask, mask.displayGlyphs)
 }
 
 function animate(timeMs: number) {
-  const glitched = glitchGlyphs(baseGlyphs, createRenderConfig(parsed.viewBox, config), timeMs)
-  displayGlyphs = applyPointerColors(glitched)
-  draw(displayGlyphs)
+  for (const mask of masks) {
+    const itemConfig = getMaskConfig(mask)
+    const glitched = glitchGlyphs(mask.baseGlyphs, createRenderConfig(mask.parsed.viewBox, itemConfig), timeMs)
+    mask.displayGlyphs = applyPointerColors(mask, glitched)
+    drawMask(mask, mask.displayGlyphs)
+  }
   requestAnimationFrame(animate)
 }
 
-function draw(glyphs: readonly GlyphInstance[]) {
+function drawMask(mask: MaskItem, glyphs: readonly GlyphInstance[]) {
+  const canvas = getMaskCanvas(mask)
+  if (!canvas) return
+
   const pixelRatio = window.devicePixelRatio || 1
   const width = Math.max(1, config.width)
   const height = Math.max(1, config.height)
-  previewCanvas.width = Math.round(width * pixelRatio)
-  previewCanvas.height = Math.round(height * pixelRatio)
-  previewCanvas.style.maxWidth = `${width}px`
-  previewCanvas.style.aspectRatio = `${width} / ${height}`
+  canvas.width = Math.round(width * pixelRatio)
+  canvas.height = Math.round(height * pixelRatio)
+  canvas.style.maxWidth = `${width}px`
+  canvas.style.aspectRatio = `${width} / ${height}`
 
-  const context = previewCanvas.getContext('2d')
+  const context = canvas.getContext('2d')
   if (!context) return
 
   context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
@@ -225,8 +284,9 @@ function draw(glyphs: readonly GlyphInstance[]) {
   context.fillStyle = '#ffffff'
   context.fillRect(0, 0, width, height)
 
-  const renderConfig = createRenderConfig(parsed.viewBox, config)
-  const transform = createViewBoxTransform(parsed.viewBox, width, height)
+  const itemConfig = getMaskConfig(mask)
+  const renderConfig = createRenderConfig(mask.parsed.viewBox, itemConfig)
+  const transform = createViewBoxTransform(mask.parsed.viewBox, width, height)
   context.font = `${renderConfig.fontWeight} ${transform.scaleY(renderConfig.fontSize)}px ${renderConfig.fontFamily}`
   context.textAlign = 'center'
   context.textBaseline = 'middle'
@@ -239,21 +299,47 @@ function draw(glyphs: readonly GlyphInstance[]) {
   context.globalAlpha = 1
 }
 
-function applyPointerColors(glyphs: readonly GlyphInstance[]): GlyphInstance[] {
-  const pointerPosition = pointer
+function applyPointerColors(mask: MaskItem, glyphs: readonly GlyphInstance[]): GlyphInstance[] {
+  const pointerPosition = mask.pointer
   if (!pointerPosition) return glyphs.map(glyph => ({ ...glyph, color: config.baseColor }))
 
   return glyphs.map(glyph => {
-    const renderConfig = createRenderConfig(parsed.viewBox, config)
+    const renderConfig = createRenderConfig(mask.parsed.viewBox, getMaskConfig(mask))
     const distance = Math.hypot(glyph.x - pointerPosition.x, glyph.y - pointerPosition.y)
     if (distance > renderConfig.hoverRadius) return { ...glyph, color: config.baseColor }
     return { ...glyph, color: mixHex(config.accentColor, config.baseColor, distance / renderConfig.hoverRadius) }
   })
 }
 
-function clientPointToCanvasViewBox(clientX: number, clientY: number): { x: number; y: number } {
-  const rect = previewCanvas.getBoundingClientRect()
-  const box = parseViewBox(parsed.viewBox)
+function exportMask(mask: MaskItem) {
+  const canvas = getMaskCanvas(mask)
+  canvas?.toBlob(blob => {
+    if (!blob) return
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `pretext-mask-${mask.id}.png`
+    link.click()
+    URL.revokeObjectURL(url)
+  }, 'image/png')
+}
+
+function getMaskConfig(mask: MaskItem): MaskConfig {
+  return { ...config, seed: mask.seed }
+}
+
+function getMaskCanvas(mask: MaskItem): HTMLCanvasElement | null {
+  return galleryNode.querySelector<HTMLCanvasElement>(`.mask-card[data-id="${mask.id}"] canvas`)
+}
+
+function clientPointToCanvasViewBox(
+  mask: MaskItem,
+  canvas: HTMLCanvasElement,
+  clientX: number,
+  clientY: number,
+): { x: number; y: number } {
+  const rect = canvas.getBoundingClientRect()
+  const box = parseViewBox(mask.parsed.viewBox)
   const xRatio = (clientX - rect.left) / rect.width
   const yRatio = (clientY - rect.top) / rect.height
   return {
@@ -325,7 +411,7 @@ function modeControl(value: MaskConfig['renderMode']): string {
       <span>${label}</span>
     </label>`
 
-  return `<div class="field field-mode">
+  return `<div class="field field-block">
     <span>Mode</span>
     <div class="mode-toggle" role="radiogroup" aria-label="Render mode">
       ${option('outline', 'Outline')}
@@ -342,8 +428,8 @@ function aspectControl(value: AspectPreset): string {
       <span>${label}</span>
     </label>`
 
-  return `<div class="field field-mode">
-    <span>Aspect</span>
+  return `<div class="field field-block">
+    <span>Aspect ratio</span>
     <div class="mode-toggle aspect-toggle" role="radiogroup" aria-label="Aspect ratio">
       ${option('custom', 'Free')}
       ${option('1:1', '1:1')}
