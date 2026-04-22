@@ -1,0 +1,258 @@
+:root {
+  color: #111111;
+  background: #f2f2f2;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+.shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.05) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(0, 0, 0, 0.05) 1px, transparent 1px),
+    #f2f2f2;
+  background-size: 26px 26px;
+}
+
+.control-panel {
+  min-height: 100vh;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  border-right: 1px solid #111111;
+  background: #ffffff;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.brand-mark {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  color: #ffffff;
+  background: #111111;
+  font-size: 25px;
+  font-weight: 700;
+}
+
+h1 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+p {
+  margin: 5px 0 0;
+  color: #777777;
+  font-size: 14px;
+}
+
+.file-picker {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 54px;
+  border: 1px dashed #111111;
+  cursor: pointer;
+  background: #f5f5f5;
+  font-weight: 700;
+}
+
+.file-picker input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.field-mode,
+.field:nth-child(2) {
+  grid-column: 1 / -1;
+}
+
+.field span {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #777777;
+}
+
+.field input,
+.field select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #111111;
+  background: #ffffff;
+  color: #111111;
+  padding: 8px 10px;
+  border-radius: 0;
+}
+
+.field select {
+  cursor: pointer;
+}
+
+.mode-toggle {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border: 1px solid #111111;
+  background: #ffffff;
+}
+
+.mode-option {
+  position: relative;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.mode-option + .mode-option {
+  border-left: 1px solid #111111;
+}
+
+.mode-option input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.mode-option span {
+  min-height: 42px;
+  display: grid;
+  place-items: center;
+  color: #111111;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: none;
+}
+
+.mode-option input:checked + span {
+  color: #ffffff;
+  background: #111111;
+}
+
+.field-color input {
+  padding: 3px;
+}
+
+.field-slider {
+  grid-column: 1 / -1;
+}
+
+.field-slider span {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.field-slider output {
+  color: #111111;
+}
+
+.field-slider input[type='range'] {
+  padding: 0;
+  min-height: 28px;
+  border: 0;
+  accent-color: #111111;
+  cursor: pointer;
+}
+
+.primary-action {
+  min-height: 50px;
+  border: 1px solid #111111;
+  color: #ffffff;
+  background: #111111;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.primary-action:hover {
+  background: #444444;
+}
+
+.status {
+  min-height: 24px;
+  color: #777777;
+  font-size: 13px;
+}
+
+.preview-wrap {
+  min-width: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+}
+
+.preview {
+  width: min(78vh, 86vw);
+  height: auto;
+  max-height: calc(100vh - 64px);
+  border: 1px solid #111111;
+  background: #ffffff;
+  box-shadow: 10px 10px 0 #111111;
+  touch-action: none;
+}
+
+@media (max-width: 820px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .control-panel {
+    min-height: auto;
+    border-right: 0;
+    border-bottom: 1px solid #111111;
+  }
+
+  .preview-wrap {
+    min-height: 60vh;
+    padding: 24px;
+  }
+
+  .preview {
+    width: min(88vw, 520px);
+    max-height: none;
+    box-shadow: 8px 8px 0 #111111;
+  }
+}

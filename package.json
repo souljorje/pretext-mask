@@ -1,0 +1,27 @@
+{
+  "name": "pretext-avatars",
+  "version": "1.0.0",
+  "description": "Seeded SVG outline avatar generator powered by Pretext text measurement.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc && vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "avatars",
+    "svg",
+    "pretext"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@chenglou/pretext": "^0.0.6"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "vite": "^8.0.9",
+    "vitest": "^4.1.5"
+  }
+}
