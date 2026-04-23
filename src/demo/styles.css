@@ -126,8 +126,8 @@ p {
 }
 
 .theme-toggle-track {
-  width: 42px;
   height: 22px;
+  aspect-ratio: 42/22;
   padding: 2px;
   display: flex;
   align-items: center;
@@ -136,8 +136,8 @@ p {
 }
 
 .theme-toggle-track span {
-  width: 16px;
-  height: 16px;
+  aspect-ratio: 1;
+  height: 100%;
   display: block;
   background: var(--control-active);
 }
@@ -204,6 +204,42 @@ p {
   cursor: pointer;
 }
 
+.field-switch {
+  align-items: stretch;
+}
+
+.switch-control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+  min-height: 42px;
+  cursor: pointer;
+}
+
+.switch-control input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+  min-height: 42px;
+  padding: 0;
+  border: 0;
+  margin: 0;
+}
+
+.switch-control .theme-toggle-track {
+  height: 100%;
+  pointer-events: none;
+  padding: 4px;
+}
+
+.switch-control input:checked + .theme-toggle-track {
+  justify-content: flex-end;
+  background: var(--control-hover);
+}
+
 .mode-toggle {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -252,7 +288,7 @@ p {
 }
 
 .field-color input {
-  padding: 3px;
+  padding: 0px 2px;
 }
 
 .field-slider {

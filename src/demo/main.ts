@@ -1,19 +1,17 @@
 import './styles.css'
 import type { MaskLayoutConfig, MaskRenderPlan, ParsedSvg, ShapeHitTester } from '../lib'
 import { createMaskRenderPlan, createShapeHitTester, extractPathsFromSvgText, makeFallbackSvg } from '../lib'
-import { createGlitchPlugin, createHoverColorPlugin, drawMaskRenderPlan, getGlitchBucket } from '../plugins'
+import { drawMaskRenderPlan } from '../plugins'
+import {
+  createDemoPlugins,
+  getDemoGlitchBucket,
+  type AnimationConfig,
+  type StyleConfig,
+} from './pluginComposer'
 
 type AspectPreset = 'custom' | '1:1' | '4:3' | '3:4' | '16:9' | '9:16'
 type ThemeMode = 'light' | 'dark'
 type Point = { x: number; y: number }
-type StyleConfig = {
-  baseColor: string
-  accentColor: string
-}
-type AnimationConfig = {
-  glitchRate: number
-  hoverRadius: number
-}
 type ControlKey = keyof MaskLayoutConfig | keyof StyleConfig | keyof AnimationConfig
 type CanvasState = {
   pixelRatio: number
@@ -59,8 +57,12 @@ const layoutConfig: MaskLayoutConfig = {
 }
 
 const animationConfig: AnimationConfig = {
-  glitchRate: 4,
+  hoverEnabled: true,
   hoverRadius: 100,
+  glitchEnabled: true,
+  glitchRate: 4,
+  typingEnabled: false,
+  typingVisibleUntil: 400,
 }
 
 const styleConfig: StyleConfig = {
@@ -77,10 +79,14 @@ const inputKeys: ControlKey[] = [
   'lineHeight',
   'fontWeight',
   'padding',
+  'hoverEnabled',
   'hoverRadius',
   'baseColor',
   'accentColor',
+  'glitchEnabled',
   'glitchRate',
+  'typingEnabled',
+  'typingVisibleUntil',
 ]
 
 const layoutKeys = new Set<ControlKey>([
@@ -132,11 +138,15 @@ app.innerHTML = `
         ${numberInput('lineHeight', 'Line height', layoutConfig.lineHeight, 1, 120, 1)}
         ${numberInput('fontWeight', 'Font weight', layoutConfig.fontWeight, 100, 900, 100)}
         ${numberInput('padding', 'Padding', layoutConfig.padding, -240, 240, 1)}
-        ${numberInput('hoverRadius', 'Hover radius', animationConfig.hoverRadius, 10, 240, 1)}
         ${modeControl(layoutConfig.renderMode)}
         ${colorInput('baseColor', 'Base', styleConfig.baseColor)}
         ${colorInput('accentColor', 'Accent', styleConfig.accentColor)}
-        ${sliderInput('glitchRate', 'Glitch rate', animationConfig.glitchRate, 0, 12, 1)}
+        ${switchInput('hoverEnabled', 'Hover plugin', animationConfig.hoverEnabled)}
+        ${numberInput('hoverRadius', 'Hover radius', animationConfig.hoverRadius, 10, 240, 1)}
+        ${switchInput('glitchEnabled', 'Glitch plugin', animationConfig.glitchEnabled)}
+        ${numberInput('glitchRate', 'Glitch rate', animationConfig.glitchRate, 0, 12, 1)}
+        ${switchInput('typingEnabled', 'Typing plugin', animationConfig.typingEnabled)}
+        ${numberInput('typingVisibleUntil', 'Typing visible', animationConfig.typingVisibleUntil, 0, 4000, 1)}
       </div>
 
       <div id="status" class="status" role="status"></div>
@@ -245,13 +255,13 @@ function createMaskItem(svgText: string): MaskItem {
   }
 }
 
-function getControlValue(key: ControlKey): string | number | undefined {
+function getControlValue(key: ControlKey): string | number | boolean | undefined {
   if (key in layoutConfig) return layoutConfig[key as keyof MaskLayoutConfig]
   if (key in styleConfig) return styleConfig[key as keyof StyleConfig]
   return animationConfig[key as keyof AnimationConfig]
 }
 
-function setControlValue(key: ControlKey, value: string | number) {
+function setControlValue(key: ControlKey, value: string | number | boolean) {
   if (key in layoutConfig) {
     layoutConfig[key as keyof MaskLayoutConfig] = value as never
     return
@@ -270,7 +280,9 @@ function bindControls() {
 
     input.addEventListener('input', () => {
       const current = getControlValue(key)
-      if (typeof current === 'number') {
+      if (typeof current === 'boolean') {
+        setControlValue(key, input instanceof HTMLInputElement && input.checked)
+      } else if (typeof current === 'number') {
         setControlValue(key, Number(input.value))
         updateOutputValue(key, input.value)
         if (key === 'width' || key === 'height') {
@@ -436,7 +448,7 @@ function relayoutItem(mask: MaskItem, force = false) {
 
 function animate(timeMs: number) {
   for (const mask of masks) {
-    const bucket = getGlitchBucket(animationConfig.glitchRate, timeMs)
+    const bucket = getDemoGlitchBucket(animationConfig, timeMs)
     if (bucket !== mask.lastGlitchBucket) {
       mask.lastGlitchBucket = bucket
       if (bucket !== null) markDirty(mask)
@@ -473,16 +485,11 @@ function drawMask(mask: MaskItem, glitchBucket: number | null) {
 
   drawMaskRenderPlan(context, plan, {
     baseColor: styleConfig.baseColor,
-    plugins: [
-      createHoverColorPlugin({
-        pointer: mask.pointer,
-        radius: animationConfig.hoverRadius,
-        lineHeight: renderConfig.lineHeight,
-        baseColor: styleConfig.baseColor,
-        accentColor: styleConfig.accentColor,
-      }),
-      createGlitchPlugin({ seed: mask.seed, bucket: glitchBucket }),
-    ],
+    plugins: createDemoPlugins(renderConfig, styleConfig, animationConfig, {
+      pointer: mask.pointer,
+      seed: mask.seed,
+      glitchBucket,
+    }),
   })
 }
 
@@ -526,7 +533,7 @@ function exportMask(mask: MaskItem) {
     relayoutAll(shouldForce)
   }
 
-  drawMask(mask, getGlitchBucket(animationConfig.glitchRate, performance.now()))
+  drawMask(mask, getDemoGlitchBucket(animationConfig, performance.now()))
   mask.dirty = false
   mask.canvas?.toBlob(blob => {
     if (!blob) return
@@ -589,15 +596,18 @@ function numberInput(id: ControlKey, label: string, value: number, min: number, 
   return `<label class="field"><span>${label}</span><input id="${id}" type="number" value="${value}" min="${min}" max="${max}" step="${step}" /></label>`
 }
 
-function sliderInput(id: ControlKey, label: string, value: number, min: number, max: number, step: number): string {
-  return `<label class="field field-slider">
-    <span>${label} <output id="${id}-value">${value}</output></span>
-    <input id="${id}" type="range" value="${value}" min="${min}" max="${max}" step="${step}" />
-  </label>`
-}
-
 function colorInput(id: ControlKey, label: string, value: string): string {
   return `<label class="field field-color"><span>${label}</span><input id="${id}" type="color" value="${value}" /></label>`
+}
+
+function switchInput(id: ControlKey, label: string, checked: boolean): string {
+  return `<label class="field field-switch">
+    <span>${label}</span>
+    <span class="switch-control">
+      <input id="${id}" type="checkbox"${checked ? ' checked' : ''} />
+      <span class="theme-toggle-track" aria-hidden="true"><span></span></span>
+    </span>
+  </label>`
 }
 
 function updateOutputValue(key: ControlKey, value: string) {
