@@ -97,6 +97,15 @@ describe('run layout', () => {
     expect(plan.letterSpacing).toBe(4)
   })
 
+  it('packs generated symbol runs across punctuation breakpoints', () => {
+    const plan = createMaskRenderPlan(parsed, filledShapeTester, config)
+    expect(plan.runs.length).toBeGreaterThan(0)
+
+    for (const run of plan.runs) {
+      expect(run.width).toBeGreaterThan(config.width * 0.85)
+    }
+  })
+
   it('materializes glyph positions monotonically inside the run width', () => {
     const plan = createMaskRenderPlan(parsed, filledShapeTester, { ...config, width: 220 })
     const run = plan.runs.find(item => item.text.length > 1)

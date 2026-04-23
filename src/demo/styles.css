@@ -237,7 +237,7 @@ p {
 
 .switch-control input:checked + .theme-toggle-track {
   justify-content: flex-end;
-  background: var(--control-hover);
+  /* background: var(--control-hover); */
 }
 
 .mode-toggle {

@@ -1,4 +1,4 @@
-import { layoutNextLine, prepareWithSegments, type LayoutCursor, type PreparedTextWithSegments } from '@chenglou/pretext'
+import { layoutNextLine, prepareWithSegments, type LayoutCursor, type LayoutLine, type PreparedTextWithSegments } from '@chenglou/pretext'
 import { fontShorthand, getGlyphStep, measureGlyphWidthMap, SYMBOL_ALPHABET } from './glyphLayout'
 import { hashSeed, makeGlyphStream, splitGlyphs } from './random'
 import { fitViewBoxToFrame } from './scale'
@@ -37,7 +37,7 @@ export function createMaskRenderPlan(
   const segments = createShapeRowSegments(parsed, hitTester, config)
   const streamLength = estimateStreamLength(segments, glyphStep)
   const preparedStream = getPreparedGlyphStream(config, streamLength)
-  const runs = routeRunsThroughSegments(segments, preparedStream.prepared, preparedStream.loop)
+  const runs = routeRunsThroughSegments(segments, preparedStream.prepared, preparedStream.loop, config)
   const materializedGlyphs = new Map<string, TextRunGlyph[]>()
 
   return {
@@ -115,19 +115,14 @@ function routeRunsThroughSegments(
   segments: readonly RowSegment[],
   prepared: PreparedTextWithSegments,
   loop: boolean,
+  config: MaskLayoutConfig,
 ): TextRun[] {
   const runs: TextRun[] = []
   let cursor: LayoutCursor = INITIAL_CURSOR
   let globalStart = 0
 
   for (const segment of segments) {
-    let line = layoutNextLine(prepared, cursor, segment.width)
-
-    if (line === null && loop) {
-      cursor = INITIAL_CURSOR
-      line = layoutNextLine(prepared, cursor, segment.width)
-    }
-
+    const line = layoutSegmentLine(prepared, cursor, segment.width, loop, config)
     if (line === null || line.text.length === 0) continue
 
     const length = splitGlyphs(line.text).length
@@ -148,6 +143,64 @@ function routeRunsThroughSegments(
   }
 
   return runs
+}
+
+function layoutSegmentLine(
+  prepared: PreparedTextWithSegments,
+  cursor: LayoutCursor,
+  maxWidth: number,
+  loop: boolean,
+  config: MaskLayoutConfig,
+): LayoutLine | null {
+  if (!loop) return layoutPreparedLine(prepared, cursor, maxWidth, false)
+
+  const glyphStep = getGlyphStep(config)
+  let nextCursor = cursor
+  let text = ''
+  let width = 0
+  let chunkCount = 0
+  const maxChunkCount = Math.max(1, Math.ceil(maxWidth / Math.max(glyphStep, 1)) + 8)
+
+  while (chunkCount < maxChunkCount) {
+    const leadingSpacing = chunkCount > 0 ? config.glyphSpacing : 0
+    const remainingWidth = maxWidth - width - leadingSpacing
+    if (chunkCount > 0 && remainingWidth < glyphStep * 0.75) break
+
+    const line = layoutPreparedLine(prepared, nextCursor, remainingWidth, true)
+    if (line === null || line.text.length === 0 || line.width <= 0) break
+
+    const nextWidth = width + leadingSpacing + line.width
+    if (chunkCount > 0 && nextWidth <= width) break
+    if (chunkCount > 0 && nextWidth > maxWidth + 0.1) break
+
+    text += line.text
+    width = nextWidth
+    nextCursor = line.end
+    chunkCount += 1
+  }
+
+  if (chunkCount === 0) return null
+  return {
+    text,
+    width,
+    start: cursor,
+    end: nextCursor,
+  }
+}
+
+function layoutPreparedLine(
+  prepared: PreparedTextWithSegments,
+  cursor: LayoutCursor,
+  maxWidth: number,
+  loop: boolean,
+): LayoutLine | null {
+  let line = layoutNextLine(prepared, cursor, maxWidth)
+
+  if (line === null && loop) {
+    line = layoutNextLine(prepared, INITIAL_CURSOR, maxWidth)
+  }
+
+  return line
 }
 
 function getPreparedGlyphStream(config: MaskLayoutConfig, streamLength: number): PreparedStream {
