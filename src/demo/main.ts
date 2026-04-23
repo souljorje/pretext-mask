@@ -61,8 +61,6 @@ const animationConfig: AnimationConfig = {
   hoverRadius: 100,
   glitchEnabled: true,
   glitchRate: 4,
-  typingEnabled: false,
-  typingVisibleUntil: 400,
 }
 
 const styleConfig: StyleConfig = {
@@ -85,8 +83,6 @@ const inputKeys: ControlKey[] = [
   'accentColor',
   'glitchEnabled',
   'glitchRate',
-  'typingEnabled',
-  'typingVisibleUntil',
 ]
 
 const layoutKeys = new Set<ControlKey>([
@@ -145,8 +141,6 @@ app.innerHTML = `
         ${numberInput('hoverRadius', 'Hover radius', animationConfig.hoverRadius, 10, 240, 1)}
         ${switchInput('glitchEnabled', 'Glitch plugin', animationConfig.glitchEnabled)}
         ${numberInput('glitchRate', 'Glitch rate', animationConfig.glitchRate, 0, 12, 1)}
-        ${switchInput('typingEnabled', 'Typing plugin', animationConfig.typingEnabled)}
-        ${numberInput('typingVisibleUntil', 'Typing visible', animationConfig.typingVisibleUntil, 0, 4000, 1)}
       </div>
 
       <div id="status" class="status" role="status"></div>
