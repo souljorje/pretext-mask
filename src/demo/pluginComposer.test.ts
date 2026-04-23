@@ -25,8 +25,6 @@ const animationConfig: AnimationConfig = {
   hoverRadius: 40,
   glitchEnabled: true,
   glitchRate: 4,
-  typingEnabled: true,
-  typingVisibleUntil: 10,
 }
 
 describe('demo plugin composer', () => {
@@ -49,7 +47,6 @@ describe('demo plugin composer', () => {
           ...animationConfig,
           hoverEnabled: false,
           glitchEnabled: false,
-          typingEnabled: false,
         },
         {
           pointer: { x: 0, y: 0 },
