@@ -3,7 +3,7 @@ import type { Point } from '../plugins'
 import {
   createGlitchPlugin,
   createHoverColorPlugin,
-  createTypingPlugin,
+  // createTypingPlugin,
   getGlitchBucket,
   type MaskRenderPlugin,
 } from '../plugins'
@@ -18,8 +18,8 @@ export type AnimationConfig = {
   hoverRadius: number
   glitchEnabled: boolean
   glitchRate: number
-  typingEnabled: boolean
-  typingVisibleUntil: number
+  // typingEnabled: boolean
+  // typingVisibleUntil: number
 }
 
 export type DemoPluginState = {
@@ -36,9 +36,9 @@ export function createDemoPlugins(
 ): MaskRenderPlugin[] {
   const plugins: MaskRenderPlugin[] = []
 
-  if (animationConfig.typingEnabled) {
-    plugins.push(createTypingPlugin(animationConfig.typingVisibleUntil))
-  }
+  // if (animationConfig.typingEnabled) {
+  //   plugins.push(createTypingPlugin(animationConfig.typingVisibleUntil))
+  // }
 
   if (animationConfig.hoverEnabled) {
     plugins.push(
